@@ -301,3 +301,30 @@ test('manual arguments cannot promote DRY_RUN to production', () => {
   assert.equal(sent.length, 0);
   assert.equal(tracker.writes, 0);
 });
+
+test('payment calculation inspector logs a read-only summary even in production mode', () => {
+  const { environment: e, tracker, emails, sent, previews } = setup({
+    paid: 7,
+    settings: {
+      EMAIL_MODE: 'PRODUCTION',
+      ALLOW_PRODUCTION_EMAILS: 'true',
+      ENABLE_PAYMENT_IMPORT: 'true'
+    }
+  });
+  tracker.put(7, 2, day('2099-01-01'));
+  tracker.put(8, 2, '$99.99');
+  const report = e.testUpdateParticipants();
+
+  assert.equal(report.length, 1);
+  assert.equal(report[0].name, 'Alex');
+  assert.equal(report[0].totalPaid, '$7.00');
+  assert.equal(report[0].calculatedEndDate, '2026-11-20');
+  assert.equal(report[0].prepaidCredit, '$2.00');
+  assert.equal(report[0].monthsPaid, 1);
+  assert.match(previews[0], /"calculatedEndDate": "2026-11-20"/);
+  assert.equal(tracker.get(7, 2).toISOString().slice(0, 10), '2099-01-01');
+  assert.equal(tracker.get(8, 2), '$99.99');
+  assert.equal(tracker.writes, 0);
+  assert.equal(emails.writes, 0);
+  assert.equal(sent.length, 0);
+});

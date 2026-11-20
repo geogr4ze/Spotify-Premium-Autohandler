@@ -6,3 +6,23 @@
 function previewPaymentReminders() {
   return runPaymentCycle(undefined, true);
 }
+
+/**
+ * Inspect recalculated paid-through dates in the Apps Script editor.
+ * Intentionally read-only regardless of EMAIL_MODE: no Gmail operations,
+ * email sending, or writes to Tracker rows 7 and 8.
+ */
+function testUpdateParticipants() {
+  const context = getTrackerContext();
+  const report = updateParticipants(context, false);
+  const summary = report.participants.map(person => ({
+    name: person.name,
+    totalPaid: moneyString(parseMoneyCents(person.amountPaid)),
+    calculatedEndDate: person.endDate,
+    prepaidCredit: moneyString(person.creditCents),
+    monthsPaid: person.monthsPaid
+  }));
+
+  console.log(JSON.stringify(summary, null, 2));
+  return summary;
+}

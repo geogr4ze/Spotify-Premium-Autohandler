@@ -59,6 +59,8 @@ On successful import, the Gmail message ID is written to `Emails!E` to prevent d
 3. The tests load your real `.gs` and `.js` files into an isolated Node VM with mocked Gmail, Sheets, MailApp, HtmlService, and script properties. **They cannot send real emails or alter Google Sheets.**
 4. To add scenarios, extend `tests/paymentTracker.test.js`. VS Code recognizes `.gs` files as JavaScript through `.vscode/settings.json`.
 
+Use `testUpdateParticipants()` in the Apps Script function dropdown to log each participant's cumulative paid amount, calculated next billing date, unused credit, and months covered. This inspector **never writes the sheet or sends email**, even if `EMAIL_MODE=PRODUCTION`; an empty DEV `Emails` tab means cumulative-paid formulas may show zero and the calculated dates may differ from saved rows 7–8.
+
 Use the function `previewPaymentReminders()` in Apps Script to preview due messages against the configured sheet without changing it or sending emails. Its return value includes notification statuses, but not rendered email HTML. To inspect actual email appearance, use the separate DEV project with `EMAIL_MODE=TEST`, using fictional participants and your own recipient email.
 
 ## Safe DEV deployment from VS Code
