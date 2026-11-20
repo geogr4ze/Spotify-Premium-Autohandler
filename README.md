@@ -1,69 +1,84 @@
-# Spotify payment tracker — safe VS Code testing starter
+# Spotify Premium Autohandler
 
-This **starter** does not contain or modify your existing implementation. It demonstrates how to test Apps Script-style JavaScript locally without sending any real email.
+Google Apps Script payment tracker with **safe local tests** and a controlled email release process. The project reads the five paying participants in the **Tracker** sheet, calculates paid-through dates from cumulative contributions, processes recognized Gmail payment notices, and generates polite payment reminders.
 
-## Requirements
+## Safety first
 
-- VS Code
-- Node.js version 20 or newer (includes npm and the built-in test runner)
+- `EMAIL_MODE` defaults to `DRY_RUN`: **no emails, Gmail imports, spreadsheet writes, or marking messages read** when running the scheduled `checkCellFillColor()` entry point.
+- `TEST` sends generated reminders **only to `OWNER_EMAIL`**. It does not import Gmail messages or edit the spreadsheet.
+- `PRODUCTION` sends real reminders **only** when `ALLOW_PRODUCTION_EMAILS` is exactly `true`.
+- Gmail payment import is a separate opt-in (`ENABLE_PAYMENT_IMPORT=true`) and only runs in `PRODUCTION`.
+- Real production reminders are deduplicated for each recipient, paid-through date, and billing period using Apps Script script properties. An owner alert is generated when someone is at least two full calendar months overdue, at most once per overdue month. A send that fails does not create a success marker.
+- Use **a separate development Apps Script project and test spreadsheet**. `clasp push` to your production script can immediately change code used by time-driven triggers, even without a deploy command.
 
-## First use
+### Configuration in Apps Script
 
-1. Unzip this folder and open it in VS Code.
-2. Open Terminal > New Terminal.
-3. Run `npm test`.
-4. All 7 tests should pass without Google sign-in, network access, or email delivery.
+Open **Project Settings → Script properties** for the script you intend to run and set:
 
-There are no npm dependencies to install just to run the tests.
+| Property | Example / allowed value | Purpose |
+| --- | --- | --- |
+| `SPREADSHEET_ID` | Your spreadsheet ID | Required; *never commit personal sheet IDs*. |
+| `OWNER_EMAIL` | Your own email | Required; TEST emails go here. |
+| `EMAIL_MODE` | `DRY_RUN`, `TEST`, `PRODUCTION` | Defaults to DRY_RUN. |
+| `ALLOW_PRODUCTION_EMAILS` | `false` or `true` | Exact lowercase `true` enables live sending in PRODUCTION mode. |
+| `ENABLE_PAYMENT_IMPORT` | `false` or `true` | Exact lowercase `true` enables Gmail payment ingestion in PRODUCTION mode only. |
 
-## File layout
+**Initial recommended state:** `EMAIL_MODE=DRY_RUN`, `ALLOW_PRODUCTION_EMAILS=false`, `ENABLE_PAYMENT_IMPORT=false`. Set the spreadsheet ID and owner email for the **development copy**, not your live spreadsheet. `TEST` sends real messages to the owner inbox only; use `DRY_RUN` to guarantee no email at all.
 
-- `src/EmailService.js`: three explicit email modes: DRY_RUN, TEST, PRODUCTION.
-- `src/PaymentLogic.js`: **sample only** payment reminder selection.
-- `src/Code.js`: demonstration function that previews sample reminders, never sending messages.
-- `tests/emailSafety.test.js`: automated local tests that replace `MailApp` with an in-memory fake.
-- `.vscode/tasks.json`: launch the tests from VS Code's task runner.
+**Before enabling PRODUCTION**, use the actual latest Tracker balances to review the calculated messages. The first production run may notify overdue members who were already contacted by the old script; new duplicate-send markers cannot reconstruct past emails. Confirm that production triggers invoke only `checkCellFillColor` and that no other script sends messages independently. A live trigger is not required during development.
 
-## IMPORTANT safety properties
+## Tracker sheet layout (existing format)
 
-- `npm test` NEVER uses GmailApp, MailApp, real Google accounts, Google Sheets or the internet. `MailApp` is replaced by an in-memory fake.
-- No code in this starter runs automatically or schedules triggers.
-- Missing email configuration defaults to `DRY_RUN`.
-- `TEST` mode routes email only to the specified `testRecipient` **if run on Google Apps Script**; local tests still fake MailApp and never send anything.
-- `PRODUCTION` mode requires both `mode: "PRODUCTION"` and `allowProductionEmails: true`. Local tests still intercept calls.
-- These protections only apply to calls that go through `sendEmailSafely`. Existing code that calls `GmailApp.sendEmail` or `MailApp.sendEmail` directly is NOT protected.
+| Row / range | Content |
+| --- | --- |
+| `B4:F4` | Join dates |
+| `B5:F5` | Member names |
+| `B6:F6` | **Cumulative paid amount** per member, including historical payments |
+| `B7:F7` | Calculated paid-through dates (written only in PRODUCTION) |
+| `B8:F8` | Unused prepaid credit, or `NONE` (not overdue debt) |
+| `B9:F9` | Member email addresses |
+| `A16:A...`, `C16:C...` | Price effective date and monthly share; **contiguous rows**, with a blank row after the rate table |
+| `Emails!A:E` | Payment subject, date, sender name, amount, Gmail message ID (ID is an added fifth column) |
 
-## Adapting to your current project
+The script assumes a monthly charge on each participant's **join-date anniversary**, with the rate in effect on that billing date. If the rate table starts after a member's join date, the earliest listed rate is used for older months. Verify that your rate history is complete before enabling production. Dates are compared in the spreadsheet's timezone. A join day of the 29th–31st is clamped to month end, then restored on months that support it.
 
-1. Start by bringing your real payment-calculation code into the project, **without changing your live script**.
-2. Write tests for paid/unpaid balances, monthly dates, amounts, and duplicate reminders using fake input data.
-3. Replace direct `MailApp.sendEmail(...)` or `GmailApp.sendEmail(...)` calls with a single wrapper like `sendEmailSafely` in your **test branch**, after reviewing the existing code.
-4. For an end-to-end check using actual Google services, make a **separate Google Sheet with fictitious members**, a **separate DEV Apps Script project**, and only your own test email address.
-5. Keep live triggers and real members on production only. Review all triggers before switching code on any connected script.
+Your existing green/yellow/red **conditional formatting stays in Google Sheets**, but the script no longer reads background colours. Reminders are based on the calculated date: green = future, yellow = today, red = past. The calculated outstanding amount includes all unpaid monthly periods through today, minus any prepaid credit.
 
-## Optional: connect to a separate DEV Apps Script project with clasp
+## Gmail payment notices
 
-`clasp` is Google's command-line tool for Apps Script. You only need it to synchronize files with Google (NOT to run the local tests).
+The original code extracted sender names and amounts from fixed spreadsheet string positions. The replacement recognizes subjects containing **`received`, `from NAME and`, and a `$12.34`-style amount**. It leaves unknown formats unread and **does not import them**. The old Gmail label name remains `Spotify Premium Money`.
 
-```powershell
-npm install -g @google/clasp
-clasp login
-```
+**Important:** Before switching `ENABLE_PAYMENT_IMPORT` to `true`, compare several **redacted real payment subject lines** with the parser and its tests. Banks use different formats, and this code has not been tested with your live notifications. In particular, verify that a subject contains exactly the monetary amount you intend to record and that the extracted sender name matches your Tracker formulas. Do not infer payment receipt from an arbitrary email; only use your trusted Gmail label.
 
-Enable the Apps Script API in https://script.google.com/home/usersettings if requested.
+On successful import, the Gmail message ID is written to `Emails!E` to prevent double-importing an already recorded message. Existing historical rows have no IDs, so reconcile any unread legacy notifications before the first enabled import. The script marks a message read **after** the new row is written, and it does not change its starred status.
 
-Use a DIFFERENT Apps Script script ID for DEV than for production. Create a development script separately and connect to it. Example for creating a new standalone DEV script from this folder:
+## Local testing in VS Code
 
-```powershell
-clasp create-script --title "Spotify Tracker DEV" --type standalone --rootDir ./src
-```
+1. Install Node.js 20+ and open the repository in VS Code.
+2. Open **Terminal → New Terminal** and run `npm test` (no dependencies need installing).
+3. The tests load your real `.gs` and `.js` files into an isolated Node VM with mocked Gmail, Sheets, MailApp, HtmlService, and script properties. **They cannot send real emails or alter Google Sheets.**
+4. To add scenarios, extend `tests/paymentTracker.test.js`. VS Code recognizes `.gs` files as JavaScript through `.vscode/settings.json`.
 
-If your live code relies on `SpreadsheetApp.getActiveSpreadsheet()`, instead create a separate Google Sheet first and use a DEV project bound to that sheet (see clasp's `--parentId` option). Do not point tests to a production sheet.
+Use the function `previewPaymentReminders()` in Apps Script to preview due messages against the configured sheet without changing it or sending emails. Its return value includes notification statuses, but not rendered email HTML. To inspect actual email appearance, use the separate DEV project with `EMAIL_MODE=TEST`, using fictional participants and your own recipient email.
 
-`clasp push` uploads source to whichever script ID is saved in `.clasp.json`; verify that it is your **DEV** ID before ever using it. For extra safety, do not run `clasp push` until after local tests pass and the target project is checked. Do not use `--force` or `--watch` during setup.
+## Connecting only a development Apps Script project
 
-**Important:** Google Apps Script installations with time-driven triggers can execute head code regardless of web-app deployment/versioning. A push to production is a production change even if you never run a deploy command.
+Google's `clasp` is optional for running local tests. To sync with Apps Script, install it and set up a **separate development script** (see [Google's clasp instructions](https://developers.google.com/apps-script/guides/clasp)). Configure the development project's `SPREADSHEET_ID` to a duplicate sheet with fictitious names and addresses. Verify that the ignored `.clasp.json` targets **DEV**, not your existing production script, before every push.
 
-## Using your original code
+Do **not** push this branch directly to your live script without checking its manifest, triggers, existing spreadsheet formulas, account permissions, and properties. The code here is not yet verified against a real copy of your workbook or actual bank subjects.
 
-The sample functions in `src/PaymentLogic.js` and `src/Code.js` are just placeholders. Share your existing `.gs` / `.js` source and Google Sheet column layout to adapt these tests to your actual reminder logic without rewriting your application.
+## Main files
+
+- `src/Globals.gs`: settings and fresh participant data
+- `src/PaymentLogic.js`: precise currency/date/billing calculations
+- `src/DataComputator.gs`: calculates rows 7–8 using dated monthly rates
+- `src/AutoMoneyReceiver.gs`: opt-in, idempotent Gmail payment import
+- `src/EmailService.js`: dry-run, owner-only test, and guarded production mail
+- `src/AutoEmailSender.gs`: reminder selection, email templating, per-period dedupe
+- `src/Code.js`: always-safe manual preview function
+- `src/*.html`: professional HTML email templates
+- `tests/paymentTracker.test.js`: regression suite for the **actual app code**
+
+## Deployment caveats
+
+The implementation has been tested locally with mocks, not against your live spreadsheet or Gmail. Rate history, existing Tracker formulas, payment subject lines, and historical read/unread state must be checked with redacted examples before enabling payment import or member emails. This branch does **not** change the live Google Apps Script project automatically; merging a GitHub PR is also not a live deployment unless you explicitly synchronize it with Apps Script.
