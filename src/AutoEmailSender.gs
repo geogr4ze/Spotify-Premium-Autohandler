@@ -1,101 +1,119 @@
-// Function that send an email who needs to pay for this months spotify plan
-function mail(email, emailhtml) {
-  GmailApp.sendEmail(
-    email,
-    'Spotify Premium Payment Reminder',
-    'This email contains html',
-    {htmlBody: emailhtml}
-  )
+function makeReminderMessage(person, outstanding, monthlyRateCents, ownerEmail, today) {
+  const isPartiallyPrepaid = person.creditCents > 0;
+  const templateName = isPartiallyPrepaid ? 'OverBalanceEmail' : 'Email';
+  const template = HtmlService.createTemplateFromFile(templateName);
+  template.name = person.name;
+  template.date = displayDate(person.endDate);
+  template.today = displayDate(today);
+  template.amountDue = moneyString(outstanding.amountCents);
+  template.monthlyRate = moneyString(monthlyRateCents);
+  template.credit = moneyString(person.creditCents);
+  template.periodsDue = outstanding.cyclesDue;
+  template.ownerEmail = ownerEmail;
+
+  return {
+    to: person.email,
+    subject: 'Spotify Premium — payment reminder',
+    body: 'Hello ' + person.name + ',\n\n' +
+      'Our records show your Spotify Premium contribution was due on ' +
+      template.date + '. As of ' + template.today + ', the amount due is ' +
+      template.amountDue + ' for ' + outstanding.cyclesDue + ' billing period(s), ' +
+      'after any prepaid credit. The current monthly share is ' +
+      template.monthlyRate + '.\n\n' +
+      'Please send an Interac e-Transfer to ' + ownerEmail +
+      '. If you have already paid, please reply so we can check the records.\n\n' +
+      'Thank you.',
+    htmlBody: template.evaluate().getContent()
+  };
 }
 
-// Function to compile all the data for the email.
-function compilerRegularEmail(count) {
-  let htmlTemplate = HtmlService.createTemplateFromFile('Email');
+function makeOwnerAlert(person, outstanding, monthsOverdue, ownerEmail, today) {
+  const template = HtmlService.createTemplateFromFile('ManyuEmail');
+  template.name = person.name;
+  template.date = displayDate(person.endDate);
+  template.today = displayDate(today);
+  template.months = monthsOverdue;
+  template.moneyOwed = moneyString(outstanding.amountCents);
+  template.periodsDue = outstanding.cyclesDue;
 
-  htmlTemplate.rate = rate;
-  htmlTemplate.name = part[count].name;
-  htmlTemplate.date = part[count].endDate;
-  
-  let htmlForEmail = htmlTemplate.evaluate().getContent();
-  mail(part[count].email, htmlForEmail);
+  return {
+    to: ownerEmail,
+    subject: 'Spotify Premium — overdue account review',
+    body: person.name + ' was paid through ' + template.date +
+      '. As of ' + template.today + ', ' + monthsOverdue +
+      ' full month(s) have passed since that date. Calculated outstanding: ' +
+      template.moneyOwed + ' for ' + outstanding.cyclesDue +
+      ' billing period(s). Review the spreadsheet before following up.',
+    htmlBody: template.evaluate().getContent()
+  };
 }
 
-function compilerOverBalanceEmail(count) {
-  let htmlTemplate = HtmlService.createTemplateFromFile('OverBalanceEmail');
-
-  htmlTemplate.rate = rate;
-  htmlTemplate.overbalance = rate - part[count].overdueAmt;
-  htmlTemplate.name = part[count].name;
-  htmlTemplate.date = part[count].endDate;
-  
-  let htmlForEmail = htmlTemplate.evaluate().getContent();
-  mail(part[count].email, htmlForEmail);
-}
-
-// Function send an email to tell me who has overdue payments
-function informMail(emailhtml) {
-  GmailApp.sendEmail(
-    mchen,
-    'Spotify Premium Participant Payment Overdue',
-    'This email contains html',
-    {htmlBody: emailhtml}
-  )
-}
-
-//Compiles informer message 
-function informCompiler(count, overdueMonths) {
-  let htmlTemplate = HtmlService.createTemplateFromFile('ManyuEmail');
-
-  htmlTemplate.months = overdueMonths;
-  htmlTemplate.moneyOwed = part[count].overdueAmt;
-  htmlTemplate.name = part[count].name;
-  htmlTemplate.date = part[count].endDate;
-  
-  let htmlForEmail = htmlTemplate.evaluate().getContent();
-  informMail(htmlForEmail);
-}
-
-// Function the undate the data in the apps script
-function updateSheetData() {
-  updateParticipants()
-  for (let partNum = 0; partNum < numPart; partNum++) {
-    part[partNum] = new participant(values[0][partNum], values[1][partNum], values[2][partNum], values[3][partNum], values[4][partNum]);
+/**
+ * Properties are only written after a successful production send.
+ * A single due-date/billing-period notification won't be resent each day.
+ */
+function deliverOnce(message, dedupeKey, config) {
+  const properties = getScriptSettings();
+  if (config.mode === 'PRODUCTION' && properties.getProperty(dedupeKey)) {
+    return 'ALREADY_SENT';
   }
-  for (let c = 0; c < numPart; c++) {
-    part[c].colour = trackerSheet.getRange(String.fromCharCode('D'.charCodeAt(0) + c) + '7').getBackground();
+  const result = sendEmailSafely(message, config);
+  if (result.status === 'PRODUCTION_SENT') {
+    properties.setProperty(dedupeKey, new Date().toISOString());
   }
+  return result.status;
 }
 
-// Function to inform me when someone has not paid for 2 months
-function informer() {
-  for (let i = 0; i < numPart; i++) {
-    if (part[i].overdueAmt != "NONE") {
-      let removedSymbol = part[i].overdueAmt.replace(/[^0-9.-]/g, '');
-      let numRate = rate.replace(/[^0-9.-]/g, '');
-      
-      let months = (parseFloat(removedSymbol)) / parseFloat(numRate);
-      if (months >= 2) {
-        informCompiler(i, months);
+/** Main scheduled entry point. Safe by default; never uses background colours. */
+function runPaymentCycle(now, emailOverride) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw new Error('Another payment cycle is running.');
+  try {
+    const config = { ...getEmailConfiguration(), ...(emailOverride || {}) };
+    if (config.mode === 'PRODUCTION' && !config.allowProductionEmails) {
+      throw new Error('Production mail is not authorized.');
+    }
+    if (!['DRY_RUN', 'TEST', 'PRODUCTION'].includes(config.mode)) {
+      throw new Error('Invalid EMAIL_MODE: ' + config.mode);
+    }
+    const context = getTrackerContext();
+    const today = dateKey(now || new Date(), context.timezone);
+    if (!today) throw new Error('Invalid run date.');
+
+    let importResult = { disabled: true, imported: 0 };
+    if (config.mode === 'PRODUCTION') {
+      importResult = addData(context);
+      SpreadsheetApp.flush();
+    }
+    const report = updateParticipants(context, config.mode === 'PRODUCTION');
+    const currentRateCents = rateOnDate(report.rates, today);
+    const ownerEmail = config.ownerEmail;
+    const sent = [];
+    for (const person of report.participants) {
+      if (person.endDate > today) continue;
+      const outstanding = amountOutstanding(
+        person.endDate, person.creditCents, report.rates, today
+      );
+      if (outstanding.amountCents === 0) continue;
+      const monthsOverdue = fullMonthsOverdue(person.endDate, today);
+      const keyBase = encodeURIComponent(person.email.toLowerCase()) + ':' + person.endDate;
+      const message = makeReminderMessage(person, outstanding, currentRateCents, ownerEmail, today);
+      sent.push({ type: 'MEMBER', name: person.name,
+        status: deliverOnce(message, 'reminder:' + keyBase + ':' + monthsOverdue, config) });
+
+      if (monthsOverdue >= 2) {
+        const alert = makeOwnerAlert(person, outstanding, monthsOverdue, ownerEmail, today);
+        sent.push({ type: 'OWNER', name: person.name,
+          status: deliverOnce(alert, 'owner-alert:' + keyBase + ':' + monthsOverdue, config) });
       }
     }
+    return { mode: config.mode, importResult, notifications: sent };
+  } finally {
+    lock.releaseLock();
   }
 }
 
-//Full data update and decision function
+/** Retain the name used by existing Apps Script time-driven triggers. */
 function checkCellFillColor() {
-  console.log(rate);
-  addData();
-  updateSheetData();
-  informer();
-  for(let i = 0; i < numPart; i++) {
-    if ((part[i].colour === "#f4c7c3") || (part[i].colour === "#fce8b2")) {
-      if ((part[i].overdueAmt < rate) && (part[i].overdueAmt > 0)) {
-        compilerOverBalanceEmail(i);
-      } else {
-        compilerRegularEmail(i);
-      }
-      
-    }
-  }
+  return runPaymentCycle();
 }
-
