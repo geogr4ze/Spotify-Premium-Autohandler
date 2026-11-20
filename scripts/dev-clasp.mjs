@@ -22,8 +22,12 @@ export function verifyDevelopmentTarget(project, marker, projectRoot = root) {
       marker.scriptId !== project.scriptId) {
     throw new Error('DEV marker is missing or does not match .clasp.json. Refusing to push.');
   }
+  // Normalize projectRoot first: on Windows a test root such as '/project'
+  // otherwise compares C:\\project\\src against \\project\\src.
+  const absoluteProjectRoot = path.resolve(projectRoot);
   if (typeof project.rootDir !== 'string' ||
-      path.resolve(projectRoot, project.rootDir) !== path.join(projectRoot, 'src')) {
+      path.resolve(absoluteProjectRoot, project.rootDir) !==
+        path.join(absoluteProjectRoot, 'src')) {
     throw new Error('clasp rootDir must point exactly to src.');
   }
   return project.scriptId;
