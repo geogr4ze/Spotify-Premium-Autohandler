@@ -65,11 +65,13 @@ function deliverOnce(message, dedupeKey, config) {
 }
 
 /** Main scheduled entry point. Safe by default; never uses background colours. */
-function runPaymentCycle(now, emailOverride) {
+function runPaymentCycle(now, forceDryRun) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) throw new Error('Another payment cycle is running.');
   try {
-    const config = { ...getEmailConfiguration(), ...(emailOverride || {}) };
+    const config = getEmailConfiguration();
+    // A function argument must never be able to enable live email delivery.
+    if (forceDryRun === true) config.mode = 'DRY_RUN';
     if (config.mode === 'PRODUCTION' && !config.allowProductionEmails) {
       throw new Error('Production mail is not authorized.');
     }
