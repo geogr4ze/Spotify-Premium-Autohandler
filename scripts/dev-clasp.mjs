@@ -102,6 +102,76 @@ function createDev() {
   }
 }
 
+/**
+ * Prepare a local link for an EXISTING Apps Script project. The ID is supplied
+ * interactively and must be checked by the user in Google's DEV project.
+ * We cannot determine from the ID alone whether a project is production.
+ * Existing links are never silently replaced.
+ */
+export function prepareExistingDevLink(scriptId, existingProject = null, existingMarker = null,
+                                       projectRoot = root) {
+  const id = typeof scriptId === 'string' ? scriptId.trim() : '';
+  if (!/^[A-Za-z0-9_-]{20,}$/.test(id)) {
+    throw new Error('Invalid Script ID. Copy the Script ID from DEV Apps Script Project Settings.');
+  }
+  if (existingMarker !== null) {
+    throw new Error('A DEV marker already exists. Use npm run dev:status; refusing to relink.');
+  }
+  const project = existingProject || {scriptId: id, rootDir: './src'};
+  if (existingProject && existingProject.scriptId !== id) {
+    throw new Error('Existing .clasp.json points to a different Script ID. Refusing to overwrite.');
+  }
+  const marker = {
+    role: 'development',
+    createdBy: 'spotify-dev-clasp-setup-v1',
+    source: 'linked-existing-project',
+    scriptId: id
+  };
+  verifyDevelopmentTarget(project, marker, projectRoot);
+  return {project, marker, reusedExistingProject: Boolean(existingProject)};
+}
+
+async function linkDev() {
+  requireManifest();
+  if (existsSync(markerPath)) {
+    throw new Error('Local DEV marker already exists. Use npm run dev:status.');
+  }
+  const existingProject = existsSync(projectPath) ? readJson(projectPath) : null;
+  const {createInterface} = await import('node:readline/promises');
+  const prompt = createInterface({input: process.stdin, output: process.stdout});
+  try {
+    console.log('Linking an EXISTING DEV Apps Script project. Nothing is uploaded.');
+    console.log('Open that DEV project in Google Apps Script > Project Settings > Script ID.');
+    console.log('Verify its Script ID differs from your live production project.');
+    console.log('Verify its SPREADSHEET_ID property points to your separate TEST spreadsheet.');
+    const scriptId = await prompt.question('Paste the existing DEV Script ID: ');
+    const config = prepareExistingDevLink(scriptId, existingProject);
+    const confirm = await prompt.question(
+      'I have checked the DEV Script ID and DEV spreadsheet. Type LINK DEV to continue: '
+    );
+    if (confirm.trim() !== 'LINK DEV') {
+      throw new Error('Confirmation was not provided. No configuration was changed.');
+    }
+    // Preserve an existing matching clasp link; never overwrite it.
+    let wroteProject = false;
+    if (!config.reusedExistingProject) {
+      writeFileSync(projectPath, JSON.stringify(config.project, null, 2) + '\n', {flag: 'wx'});
+      wroteProject = true;
+    }
+    try {
+      writeFileSync(markerPath, JSON.stringify(config.marker, null, 2) + '\n', {flag: 'wx'});
+    } catch (error) {
+      if (wroteProject) rmSync(projectPath, {force: true});
+      throw error;
+    }
+    console.log('Existing DEV Apps Script link registered locally.');
+    console.log('Verify Script ID once more in Google; then run npm run dev:status.');
+    console.log('Only after review, run npm run dev:push to upload code to this DEV script.');
+  } finally {
+    prompt.close();
+  }
+}
+
 function requireDev() {
   if (!existsSync(projectPath) || !existsSync(markerPath)) {
     throw new Error('Development clasp setup missing. First run npm run dev:create.');
@@ -119,24 +189,23 @@ function pushDev() {
   run('clasp', ['push']);
 }
 
-function main() {
+async function main() {
   const command = process.argv[2];
   if (command === 'create') createDev();
+  else if (command === 'link') await linkDev();
   else if (command === 'push') pushDev();
   else if (command === 'status') {
     requireDev();
     run('clasp', ['status']);
   } else {
-    throw new Error('Use npm run dev:create, npm run dev:push, or npm run dev:status.');
+    throw new Error('Use npm run dev:create, npm run dev:link, npm run dev:push, or npm run dev:status.');
   }
 }
 
 if (process.argv[1] &&
     path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try {
-    main();
-  } catch (error) {
+  main().catch((error) => {
     console.error('DEV setup stopped safely: ' + error.message);
     process.exitCode = 1;
-  }
+  });
 }
