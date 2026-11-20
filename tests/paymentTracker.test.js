@@ -345,25 +345,45 @@ test('manual tracker update writes rows 7 and 8 without touching Gmail or mail',
   assert.equal(sent.length, 0);
 });
 
-test('manual tracker update refuses empty cumulative payment history', () => {
+test('manual tracker update accepts zero payments and replaces stale end months', () => {
   const { environment: e, tracker, emails, sent } = setup({ paid: 0 });
   tracker.put(7, 2, day('2026-12-19'));
-  assert.throws(() => e.updateTrackerValues(), /All cumulative payment totals/);
-  assert.equal(tracker.writes, 0);
+  tracker.put(8, 2, '$2.50');
+
+  const updated = e.updateTrackerValues();
+
+  assert.equal(updated.length, 1);
+  assert.equal(updated[0].totalPaid, '$0.00');
+  assert.equal(updated[0].nextBillingDate, '2026-10-20');
+  assert.equal(updated[0].endMonth, '2026-10-19');
+  assert.equal(updated[0].prepaidCredit, '$0.00');
+  assert.equal(tracker.get(7, 2).toISOString().slice(0, 10), '2026-10-19');
+  assert.equal(tracker.get(8, 2), 'NONE');
+  assert.equal(tracker.writes, 2);
   assert.equal(emails.writes, 0);
   assert.equal(sent.length, 0);
-  assert.equal(tracker.get(7, 2).toISOString().slice(0, 10), '2026-12-19');
 });
 
-test('manual tracker update refuses when a participant has missing historical payments', () => {
-  const { environment: e, tracker } = setup({ paid: 10 });
+test('manual tracker update accepts mixed paid and unpaid participants', () => {
+  const { environment: e, tracker, emails, sent } = setup({ paid: 10 });
   tracker.put(4, 3, day('2026-10-20'));
   tracker.put(5, 3, 'Taylor');
   tracker.put(6, 3, 0);
   tracker.put(7, 3, day('2026-12-19'));
+  tracker.put(8, 3, '$1.00');
   tracker.put(9, 3, 'taylor@example.com');
-  assert.throws(() => e.updateTrackerValues(), /Missing payment history for Taylor/);
-  assert.equal(tracker.writes, 0);
+
+  const updated = e.updateTrackerValues();
+
+  assert.equal(updated.length, 2);
+  assert.equal(updated[0].nextBillingDate, '2026-12-20');
+  assert.equal(updated[1].totalPaid, '$0.00');
+  assert.equal(updated[1].endMonth, '2026-10-19');
+  assert.equal(tracker.get(7, 3).toISOString().slice(0, 10), '2026-10-19');
+  assert.equal(tracker.get(8, 3), 'NONE');
+  assert.equal(tracker.writes, 4);
+  assert.equal(emails.writes, 0);
+  assert.equal(sent.length, 0);
 });
 
 test('manual tracker update refuses production or owner-only email mode', () => {
