@@ -168,8 +168,8 @@ test('future-paid participant is not reminded', () => {
 });
 
 test('test mode redirects all messages to owner, with no spreadsheet changes', () => {
-  const { environment: e, tracker, emails, sent } = setup();
-  const report = e.runPaymentCycle('2026-11-20', { mode: 'TEST' });
+  const { environment: e, tracker, emails, sent } = setup({ settings: { EMAIL_MODE: 'TEST' } });
+  const report = e.runPaymentCycle('2026-11-20');
   assert.equal(report.notifications[0].status, 'TEST_SENT');
   assert.equal(sent[0].to, 'owner@example.com');
   assert.equal(tracker.writes, 0);
@@ -289,4 +289,15 @@ test('manual preview remains safe even when configured for production', () => {
   assert.equal(sent.length, 0);
   assert.equal(tracker.writes, 0);
   assert.equal(emails.writes, 0);
+});
+
+
+test('manual arguments cannot promote DRY_RUN to production', () => {
+  const { environment: e, sent, tracker } = setup();
+  const result = e.runPaymentCycle('2026-11-20', {
+    mode: 'PRODUCTION', allowProductionEmails: true
+  });
+  assert.equal(result.mode, 'DRY_RUN');
+  assert.equal(sent.length, 0);
+  assert.equal(tracker.writes, 0);
 });
