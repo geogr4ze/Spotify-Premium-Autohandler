@@ -119,6 +119,41 @@ clasp login
    and manually run `checkCellFillColor()`. TEST mode does send emails to
    `OWNER_EMAIL`, so leave `DRY_RUN` enabled when that is unwanted.
 
+### Link your existing DEV Apps Script project (no new project needed)
+
+If you already have a separate DEV Apps Script project and a separate test
+spreadsheet, **use this instead of `npm run dev:create`**:
+
+1. In your **existing DEV Apps Script** editor, open **Project Settings** and
+   copy the **Script ID** (not the spreadsheet ID). Confirm it differs from
+   the production script's ID.
+2. In DEV **Project Settings → Script Properties**, set
+   `SPREADSHEET_ID` to your test spreadsheet, `OWNER_EMAIL` to your inbox,
+   `EMAIL_MODE=DRY_RUN`, `ALLOW_PRODUCTION_EMAILS=false` and
+   `ENABLE_PAYMENT_IMPORT=false`. Confirm no live time-based triggers are
+   configured on this DEV project.
+3. From the repository root in VS Code, run:
+
+   ```powershell
+   npm run dev:link
+   ```
+
+   Paste the **DEV Script ID** into the terminal prompt, check the project and
+   spreadsheet IDs in Google, then type `LINK DEV` to confirm. The helper
+   creates ignored local `.clasp.json` and `.clasp-dev.json` files, **without
+   uploading anything**. If `.clasp.json` already exists for that same DEV
+   script it is preserved; mismatching or previously registered links are
+   rejected.
+4. Run `npm run dev:status`, double-check the DEV Script ID inside
+   `.clasp.json` against Google, then run `npm run dev:push`. This executes
+   the local tests before uploading to the registered project.
+
+**Safety limit:** The tool cannot verify from a Google Script ID that the
+project is actually DEV or that its Script Properties point to a test sheet.
+The `LINK DEV` confirmation is your explicit acknowledgement after checking
+in Google's editor. `npm run dev:push` changes the connected Apps Script code,
+so do not use the original production Script ID.
+
 **Protection limits:** A manual `clasp push` bypasses the helper, and the helper
 cannot verify the contents of your Google Sheet or read Google Script Properties.
 Never replace the generated DEV script ID with your production ID. If you already
