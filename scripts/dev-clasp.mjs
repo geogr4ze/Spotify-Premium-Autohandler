@@ -33,12 +33,29 @@ function readJson(file) {
   return JSON.parse(readFileSync(file, 'utf8'));
 }
 
+/**
+ * Windows .cmd shims need a shell. Quoting each known, fixed CLI argument
+ * preserves titles containing spaces and avoids spawn's deprecated combination
+ * of shell:true with a separate arguments array.
+ */
+export function buildWindowsCommand(program, args) {
+  return [program, ...args].map((arg) => {
+    if (typeof arg !== 'string' || !arg) {
+      throw new Error('Invalid Windows command argument.');
+    }
+    if (/[&|<>^%!\r\n"]/.test(arg)) {
+      throw new Error('Unsafe Windows shell argument; command refused.');
+    }
+    return /\s/.test(arg) ? '"' + arg + '"' : arg;
+  }).join(' ');
+}
+
 function run(program, args, cwd = root) {
-  const result = spawnSync(program, args, {
-    cwd,
-    stdio: 'inherit',
-    shell: process.platform === 'win32'
-  });
+  const options = {cwd, stdio: 'inherit'};
+  // Node itself is an executable and does not need a shell on Windows.
+  const result = process.platform === 'win32' && program === 'clasp'
+    ? spawnSync(buildWindowsCommand(program, args), {...options, shell: true})
+    : spawnSync(program, args, options);
   if (result.error) throw new Error(result.error.message);
   if (result.status !== 0) {
     throw new Error(program + ' exited with status ' + result.status);
