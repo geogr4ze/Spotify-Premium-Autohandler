@@ -61,6 +61,72 @@ On successful import, the Gmail message ID is written to `Emails!E` to prevent d
 
 Use the function `previewPaymentReminders()` in Apps Script to preview due messages against the configured sheet without changing it or sending emails. Its return value includes notification statuses, but not rendered email HTML. To inspect actual email appearance, use the separate DEV project with `EMAIL_MODE=TEST`, using fictional participants and your own recipient email.
 
+## Safe DEV deployment from VS Code
+
+This repository includes a V8 Apps Script manifest and a helper that creates a
+**new, separate Google Apps Script development project**. It does not connect to
+or update the production script.
+
+**Requirements:** Node.js 20+, [Google clasp](https://developers.google.com/apps-script/guides/clasp),
+and your Google login. Install and authorize clasp, and enable the Apps Script API
+in your [Apps Script settings](https://script.google.com/home/usersettings):
+
+```powershell
+npm install -g @google/clasp
+clasp login
+```
+
+1. Duplicate your **Google Sheet**, including the `Tracker` and `Emails` tabs,
+   formulas, and dated rate table. Replace all member email addresses with your
+   own test address or fictional data. Do not point DEV at your live sheet.
+2. In VS Code, use the repository root (not `src/`). After updating your local
+   branch, run:
+
+   ```powershell
+   npm test
+   npm run dev:create
+   ```
+
+   This creates a new standalone project titled **Spotify Premium Autohandler DEV**
+   in a temporary folder. It saves the newly created ID to local, ignored
+   `.clasp.json` and `.clasp-dev.json`. It refuses to overwrite an existing
+   clasp link. The temporary folder prevents clasp's default starter files from
+   overwriting your application.
+3. Open the new Apps Script link printed by `dev:create`. In **Project Settings →
+   Script properties**, enter:
+
+   ```text
+   SPREADSHEET_ID=<ID of the copied TEST spreadsheet>
+   OWNER_EMAIL=<your own email address>
+   EMAIL_MODE=DRY_RUN
+   ALLOW_PRODUCTION_EMAILS=false
+   ENABLE_PAYMENT_IMPORT=false
+   ```
+
+4. Upload the tested source to **DEV only**:
+
+   ```powershell
+   npm run dev:status
+   npm run dev:push
+   ```
+
+   `dev:push` checks that the clasp ID matches the local DEV marker and that
+   `rootDir` is `src`, runs the complete test suite, then invokes `clasp push`.
+   It does **not** create a web-app deployment or enable triggers.
+5. In the Apps Script editor, run `previewPaymentReminders()` manually. This
+   previews reminder statuses without sending emails or writing the sheet.
+   To send a test email to **your inbox only**, switch `EMAIL_MODE` to `TEST`
+   and manually run `checkCellFillColor()`. TEST mode does send emails to
+   `OWNER_EMAIL`, so leave `DRY_RUN` enabled when that is unwanted.
+
+**Protection limits:** A manual `clasp push` bypasses the helper, and the helper
+cannot verify the contents of your Google Sheet or read Google Script Properties.
+Never replace the generated DEV script ID with your production ID. If you already
+have an unrelated `.clasp.json` locally, use a separate clean checkout for DEV.
+Production release still requires checking real payment history, legacy triggers,
+and redacted payment notification subjects. Do not enable real participant sending
+until those are checked.
+
 ## Connecting only a development Apps Script project
 
 Google's `clasp` is optional for running local tests. To sync with Apps Script, install it and set up a **separate development script** (see [Google's clasp instructions](https://developers.google.com/apps-script/guides/clasp)). Configure the development project's `SPREADSHEET_ID` to a duplicate sheet with fictitious names and addresses. Verify that the ignored `.clasp.json` targets **DEV**, not your existing production script, before every push.
