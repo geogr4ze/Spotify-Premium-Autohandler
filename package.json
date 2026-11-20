@@ -4,6 +4,9 @@
   "private": true,
   "description": "Mocked local testing for a Spotify plan payment tracker using Google Apps Script",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "dev:create": "node scripts/dev-clasp.mjs create",
+    "dev:status": "node scripts/dev-clasp.mjs status",
+    "dev:push": "node scripts/dev-clasp.mjs push"
   }
 }
