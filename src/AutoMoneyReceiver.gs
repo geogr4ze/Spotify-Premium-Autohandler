@@ -1,26 +1,73 @@
-const labelName = 'Spotify Premium Money';
-const nameFinder = '=MID(A2, SEARCH("from", A2) + 5, SEARCH("and", A2) - (SEARCH("from", A2) + 6))';
-const amountFinder = '=VALUE(MID(A2, 37, SEARCH("received", A2) - 23))';
+/**
+ * Extract only unambiguous Interac-style notifications from subject lines.
+ * Unknown formats remain unread for manual review — never guess a payment.
+ */
+function parsePaymentSubject(subject) {
+  if (typeof subject !== 'string' || !/\breceived\b/i.test(subject)) return null;
+  const nameMatch = /\bfrom\s+(.+?)\s+and\b/i.exec(subject);
+  const amountMatch = /\$\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/.exec(subject);
+  if (!nameMatch || !amountMatch) return null;
+  const name = nameMatch[1].trim();
+  if (!name || name.length > 150) return null;
+  try {
+    const cents = parseMoneyCents(amountMatch[0]);
+    if (cents <= 0) return null;
+    return { name, amount: cents / 100 };
+  } catch (error) {
+    return null;
+  }
+}
 
-//Data reader and translate from email to google sheets
-function addData() {
-  const label = GmailApp.getUserLabelByName(labelName);
-  const threads = label.getThreads();
-  for (let i = 0; i < threads.length; i++) {
-    const message = threads[i].getMessages();
-    if (message[0].isUnread()) {
-      emailSheet.insertRows(2, 1);
-      let subject = message[0].getSubject();
-      let date = message[0].getDate();
-      var newRowData = [subject, date, nameFinder, amountFinder];
+/** Import Gmail notifications only in explicitly enabled production mode. */
+function addData(context) {
+  if (getScriptSettings().getProperty('ENABLE_PAYMENT_IMPORT') !== 'true') {
+    return { imported: 0, skipped: 0, disabled: true };
+  }
 
-      emailSheet.getRange(2, 1, 1, newRowData.length).setValues([newRowData]);
-      
-      Gmail.Users.Messages.modify({
-        'removeLabelIds': ['STARRED']
-      }, 'me', message[0].getId());
-      message[0].markRead();
-      updateParticipants()
+  const label = GmailApp.getUserLabelByName(TRACKER_LAYOUT.paymentLabel);
+  if (!label) {
+    console.warn('Payment label not found; skipping inbox import.');
+    return { imported: 0, skipped: 0, missingLabel: true };
+  }
+  const sheet = context.emailSheet;
+  const lastRow = sheet.getLastRow();
+  const ids = lastRow > 1
+    ? sheet.getRange(2, 5, lastRow - 1, 1).getValues().map(row => String(row[0]))
+    : [];
+  const seenIds = new Set(ids);
+  let imported = 0;
+  let skipped = 0;
+
+  // The labelled inbox is small; processing all threads also handles multi-message threads.
+  for (const thread of label.getThreads()) {
+    for (const message of thread.getMessages()) {
+      if (!message.isUnread()) continue;
+      const messageId = String(message.getId());
+      if (seenIds.has(messageId)) {
+        message.markRead(); // Imported previously, e.g. a prior run failed after insert.
+        continue;
+      }
+      const parsed = parsePaymentSubject(message.getSubject());
+      if (!parsed) {
+        skipped++;
+        console.warn('Unrecognized payment notification; left unread for review.');
+        continue;
+      }
+      const when = message.getDate();
+      if (Object.prototype.toString.call(when) !== '[object Date]' ||
+          !Number.isFinite(when.getTime())) {
+        skipped++;
+        continue;
+      }
+      sheet.insertRows(2, 1);
+      sheet.getRange(2, 1, 1, 5).setValues([[
+        message.getSubject(), when, parsed.name, parsed.amount, messageId
+      ]]);
+      SpreadsheetApp.flush();
+      seenIds.add(messageId);
+      imported++;
+      message.markRead(); // Only after the spreadsheet write succeeds.
     }
-  } 
+  }
+  return { imported, skipped };
 }
