@@ -328,3 +328,59 @@ test('payment calculation inspector logs a read-only summary even in production 
   assert.equal(emails.writes, 0);
   assert.equal(sent.length, 0);
 });
+
+test('manual tracker update writes rows 7 and 8 without touching Gmail or mail', () => {
+  const { environment: e, tracker, emails, sent } = setup({ paid: 7 });
+  const updated = e.updateTrackerValues();
+  assert.equal(updated.length, 1);
+  assert.equal(updated[0].name, 'Alex');
+  assert.equal(updated[0].totalPaid, '$7.00');
+  assert.equal(updated[0].nextBillingDate, '2026-11-20');
+  assert.equal(updated[0].endMonth, '2026-11-19');
+  assert.equal(updated[0].prepaidCredit, '$2.00');
+  assert.equal(tracker.get(7, 2).toISOString().slice(0, 10), '2026-11-19');
+  assert.equal(tracker.get(8, 2), '$2.00');
+  assert.equal(tracker.writes, 2);
+  assert.equal(emails.writes, 0);
+  assert.equal(sent.length, 0);
+});
+
+test('manual tracker update refuses empty cumulative payment history', () => {
+  const { environment: e, tracker, emails, sent } = setup({ paid: 0 });
+  tracker.put(7, 2, day('2026-12-19'));
+  assert.throws(() => e.updateTrackerValues(), /All cumulative payment totals/);
+  assert.equal(tracker.writes, 0);
+  assert.equal(emails.writes, 0);
+  assert.equal(sent.length, 0);
+  assert.equal(tracker.get(7, 2).toISOString().slice(0, 10), '2026-12-19');
+});
+
+test('manual tracker update refuses when a participant has missing historical payments', () => {
+  const { environment: e, tracker } = setup({ paid: 10 });
+  tracker.put(4, 3, day('2026-10-20'));
+  tracker.put(5, 3, 'Taylor');
+  tracker.put(6, 3, 0);
+  tracker.put(7, 3, day('2026-12-19'));
+  tracker.put(9, 3, 'taylor@example.com');
+  assert.throws(() => e.updateTrackerValues(), /Missing payment history for Taylor/);
+  assert.equal(tracker.writes, 0);
+});
+
+test('manual tracker update refuses production or owner-only email mode', () => {
+  for (const mode of ['PRODUCTION', 'TEST']) {
+    const { environment: e, tracker, sent } = setup({
+      settings: { EMAIL_MODE: mode, ALLOW_PRODUCTION_EMAILS: 'true' }
+    });
+    assert.throws(() => e.updateTrackerValues(), /require EMAIL_MODE=DRY_RUN/);
+    assert.equal(tracker.writes, 0);
+    assert.equal(sent.length, 0);
+  }
+});
+
+test('manual tracker update preserves one-day end-month convention across year boundaries', () => {
+  const { environment: e, tracker } = setup({ join: '2026-12-31', paid: 5 });
+  const report = e.updateTrackerValues();
+  assert.equal(report[0].nextBillingDate, '2027-01-31');
+  assert.equal(report[0].endMonth, '2027-01-30');
+  assert.equal(tracker.get(7, 2).toISOString().slice(0, 10), '2027-01-30');
+});
