@@ -4,5 +4,5 @@
  * or modify the spreadsheet, even if the project is set to PRODUCTION.
  */
 function previewPaymentReminders() {
-  return runPaymentCycle(undefined, { mode: 'DRY_RUN' });
+  return runPaymentCycle(undefined, true);
 }
