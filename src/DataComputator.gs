@@ -26,9 +26,16 @@ function readRateSchedule(context) {
   return rates;
 }
 
+/** Convert the next billing date into the sheet's inclusive end month. */
+function previousCalendarDay(key) {
+  const parts = key.split('-').map(Number);
+  return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] - 1))
+    .toISOString().slice(0, 10);
+}
+
 /**
  * Calculate each participant from their join date and total contributions.
- * Only production runs should pass writeChanges=true.
+ * Only explicit, approved write paths should pass writeChanges=true.
  */
 function updateParticipants(context, writeChanges) {
   const records = readParticipantRecords(context);
@@ -47,7 +54,7 @@ function updateParticipants(context, writeChanges) {
 
   if (writeChanges === true) {
     for (const result of results) {
-      const dateValue = Utilities.parseDate(result.endDate, context.timezone, 'yyyy-MM-dd');
+      const dateValue = Utilities.parseDate(previousCalendarDay(result.endDate), context.timezone, 'yyyy-MM-dd');
       context.trackerSheet.getRange(TRACKER_LAYOUT.endDateRow, result.column).setValue(dateValue);
       context.trackerSheet.getRange(TRACKER_LAYOUT.creditRow, result.column).setValue(
         result.creditCents ? moneyString(result.creditCents) : 'NONE'
