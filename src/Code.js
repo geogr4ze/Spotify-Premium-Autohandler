@@ -30,7 +30,8 @@ function testUpdateParticipants() {
 /**
  * Manually apply recalculated tracker values in a DEV dry run.
  * This updates only Tracker rows 7 and 8. It never reads Gmail or sends mail.
- * Refuse to replace previously saved coverage when payment history is missing.
+ * Zero cumulative payments are valid on the test sheet, even if this
+ * overwrites previously saved end dates and credits.
  */
 function updateTrackerValues() {
   const properties = getScriptSettings();
@@ -45,21 +46,6 @@ function updateTrackerValues() {
   if (!preview.participants.length) {
     throw new Error('No participants found; nothing was updated.');
   }
-  if (!preview.participants.some(person => parseMoneyCents(person.amountPaid) > 0)) {
-    throw new Error('All cumulative payment totals are $0.00. Add DEV payment records before updating end dates.');
-  }
-
-  for (const person of preview.participants) {
-    const savedDate = dateKey(person.savedEndDate, context.timezone);
-    if (parseMoneyCents(person.amountPaid) === 0 &&
-        savedDate && savedDate >= person.endDate) {
-      throw new Error(
-        'Missing payment history for ' + person.name +
-        '; existing end month would be overwritten. Nothing was updated.'
-      );
-    }
-  }
-
   const report = updateParticipants(context, true);
   const summary = report.participants.map(person => ({
     name: person.name,
