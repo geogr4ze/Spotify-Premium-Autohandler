@@ -404,3 +404,61 @@ test('manual tracker update preserves one-day end-month convention across year b
   assert.equal(report[0].endMonth, '2027-01-30');
   assert.equal(tracker.get(7, 2).toISOString().slice(0, 10), '2027-01-30');
 });
+
+
+test('import-only review records new payments without sending mail or editing Tracker', () => {
+  const { environment: e, tracker, emails, sent, mailMessages } = setup({
+    settings: {
+      EMAIL_MODE: 'DRY_RUN',
+      ALLOW_PRODUCTION_EMAILS: 'false',
+      ENABLE_PAYMENT_IMPORT: 'true'
+    },
+    messages: [
+      {
+        id: 'review-msg-1', unread: true,
+        subject: 'You received $4.50 from Alex and the transfer was deposited',
+        date: day('2026-11-20')
+      },
+      {
+        id: 'unknown-msg', unread: true,
+        subject: 'Your transfer was deposited',
+        date: day('2026-11-20')
+      }
+    ]
+  });
+
+  const first = e.importPaymentsForReview();
+  assert.equal(first.imported, 1);
+  assert.equal(first.skipped, 1);
+  assert.equal(emails.get(2, 3), 'Alex');
+  assert.equal(emails.get(2, 4), 4.5);
+  assert.equal(emails.get(2, 5), 'review-msg-1');
+  assert.equal(mailMessages[0].unread, false);
+  assert.equal(mailMessages[1].unread, true);
+  assert.equal(tracker.writes, 0);
+  assert.equal(sent.length, 0);
+
+  // Even if the same message is marked unread again, the Gmail ID prevents
+  // importing it twice.
+  mailMessages[0].unread = true;
+  const second = e.importPaymentsForReview();
+  assert.equal(second.imported, 0);
+  assert.equal(mailMessages[0].unread, false);
+  assert.equal(tracker.writes, 0);
+  assert.equal(sent.length, 0);
+});
+
+test('import-only review requires explicit import permission and no live mail', () => {
+  for (const settings of [
+    { EMAIL_MODE: 'DRY_RUN', ALLOW_PRODUCTION_EMAILS: 'false', ENABLE_PAYMENT_IMPORT: 'false' },
+    { EMAIL_MODE: 'TEST', ALLOW_PRODUCTION_EMAILS: 'false', ENABLE_PAYMENT_IMPORT: 'true' },
+    { EMAIL_MODE: 'PRODUCTION', ALLOW_PRODUCTION_EMAILS: 'false', ENABLE_PAYMENT_IMPORT: 'true' },
+    { EMAIL_MODE: 'DRY_RUN', ALLOW_PRODUCTION_EMAILS: 'true', ENABLE_PAYMENT_IMPORT: 'true' }
+  ]) {
+    const { environment: e, tracker, emails, sent } = setup({ settings });
+    assert.throws(() => e.importPaymentsForReview(), /Import review requires/);
+    assert.equal(tracker.writes, 0);
+    assert.equal(emails.writes, 0);
+    assert.equal(sent.length, 0);
+  }
+});
