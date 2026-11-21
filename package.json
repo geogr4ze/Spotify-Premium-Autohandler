@@ -8,6 +8,10 @@
     "dev:create": "node scripts/dev-clasp.mjs create",
     "dev:link": "node scripts/dev-clasp.mjs link",
     "dev:status": "node scripts/dev-clasp.mjs status",
-    "dev:push": "node scripts/dev-clasp.mjs push"
+    "dev:push": "node scripts/dev-clasp.mjs push",
+    "deploy:dev": "node scripts/dev-clasp.mjs push",
+    "deploy:prod:link": "node scripts/prod-clasp.mjs link",
+    "deploy:prod:status": "node scripts/prod-clasp.mjs status",
+    "deploy:prod": "node scripts/prod-clasp.mjs push"
   }
 }
