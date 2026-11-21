@@ -57,3 +57,31 @@ function updateTrackerValues() {
   console.log(JSON.stringify(summary, null, 2));
   return summary;
 }
+
+
+/**
+ * Explicit one-time Gmail payment import for a controlled live-data review.
+ *
+ * Writes recognized, unimported messages into the Emails tab and marks them
+ * read, but does NOT update Tracker end dates or send reminder emails.
+ * Review the Gmail label and historical rows before running this function.
+ */
+function importPaymentsForReview() {
+  const properties = getScriptSettings();
+  const mode = (properties.getProperty('EMAIL_MODE') || 'DRY_RUN')
+    .trim().toUpperCase();
+  if (mode !== 'DRY_RUN' ||
+      properties.getProperty('ALLOW_PRODUCTION_EMAILS') === 'true' ||
+      properties.getProperty('ENABLE_PAYMENT_IMPORT') !== 'true') {
+    throw new Error(
+      'Import review requires EMAIL_MODE=DRY_RUN, ' +
+      'ALLOW_PRODUCTION_EMAILS=false, and ENABLE_PAYMENT_IMPORT=true.'
+    );
+  }
+
+  const context = getTrackerContext();
+  const result = addData(context);
+  SpreadsheetApp.flush();
+  console.log(JSON.stringify(result, null, 2));
+  return result;
+}
