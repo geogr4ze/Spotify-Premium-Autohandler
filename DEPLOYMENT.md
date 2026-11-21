@@ -1,62 +1,19 @@
-# Deploy to DEV or PRODUCTION from the same VS Code checkout
+# Spotify Premium Autohandler — ongoing deployments
 
-You can safely use **one GitHub checkout** on your laptop or PC to upload the
-same `src/` code to either Apps Script project. The local target configurations
-are independent and ignored by Git.
+The Spotify payment tracker has already been transitioned to its real Google Apps Script project. This guide covers **updates to the existing DEV and production projects**, not an initial production cutover. Do not create a new production Apps Script project just to deploy an update.
 
-| Target | One-time setup | Check connection | Upload |
-| --- | --- | --- | --- |
-| DEV test project | `npm.cmd run dev:link` if not linked | `npm.cmd run dev:status` | `npm.cmd run deploy:dev` |
-| Existing real project | `npm.cmd run deploy:prod:link` | `npm.cmd run deploy:prod:status` | `npm.cmd run deploy:prod` |
+Both targets can be managed from the **same VS Code checkout**. Their Apps Script IDs are kept in separate, git-ignored local files, so switching computers may require linking the existing projects on the new computer.
 
-If you also merge the earlier production preflight PR (#10), use this guide's\n**same-checkout commands** instead of the separate-folder upload method in\nits cutover checklist. Its payment reconciliation and live-email checks still apply.\n\n**There is no default production target.** Production requires a separately
-registered Script ID and an interactive confirmation on every upload. Existing
-`dev:push`, `dev:status`, `dev:link` and `dev:create` commands continue to work.
+| Target | Check the connected script | Upload updates |
+| --- | --- | --- |
+| DEV test project | `npm.cmd run dev:status` | `npm.cmd run deploy:dev` |
+| Existing production project | `npm.cmd run deploy:prod:status` | `npm.cmd run deploy:prod` |
 
-## First-time setup on each computer
+**Merging a GitHub pull request does not upload code to Google Apps Script.** The upload commands synchronize the `src/` code only; they do not update Script Properties, alter spreadsheet data directly, or create or remove scheduled triggers. However, an already-running trigger can execute newly uploaded code.
 
-1. Install and sign in to `clasp` for the Google account that owns both scripts:
+## Update DEV
 
-   ```powershell
-   npm.cmd install -g @google/clasp
-   clasp.cmd login
-   ```
-
-2. Clone the repo or update the local checkout:
-
-   ```powershell
-   git checkout main
-   git pull
-   npm.cmd test
-   ```
-
-3. For DEV, if your PC does not have the local `.clasp.json` and
-   `.clasp-dev.json` files, run:
-
-   ```powershell
-   npm.cmd run dev:link
-   ```
-
-   Use the **existing DEV Script ID** from Google Apps Script → Project
-   Settings. Do not create another project if the DEV project already exists.
-
-4. For production, back up the **real Sheet and original Apps Script source**,
-   then run **once per PC**:
-
-   ```powershell
-   npm.cmd run deploy:prod:link
-   ```
-
-   Paste the **existing REAL production Script ID** from that project's
-   Project Settings, compare it with the DEV Script ID, then type the requested
-   confirmation. This saves a separate, ignored `.clasp-prod.json` locally.
-   It does **not** upload code or change your Google Sheet.
-
-   Do not paste either ID into source files, GitHub issues, or pull requests.
-
-## Everyday deployment
-
-### Upload to DEV
+From the repository root in VS Code:
 
 ```powershell
 git checkout main
@@ -65,34 +22,26 @@ npm.cmd run dev:status
 npm.cmd run deploy:dev
 ```
 
-This reuses the existing, validated DEV clasp setup and runs the Node tests.
+This checks the saved DEV target and runs the local Node tests before uploading. Confirm the DEV script points to a separate test spreadsheet, not the live payment records.
 
-### Upload to PRODUCTION
+## Update production
 
-**Before every production upload**:
+Before updating the **existing live** Apps Script project:
 
-- Back up your real spreadsheet and current Apps Script code.
-- In the **real Apps Script project**, review and disable existing scheduled
-  triggers that should not be running during code replacement.
-- In real **Project Settings → Script properties**, verify:
+1. **Back up** the live Google Sheet and current Apps Script source so you can roll back if necessary.
+2. Review what changed, including payment parsing, billing calculations, Gmail access and email recipients. Check any relevant data against the real `Tracker` and `Emails` tabs.
+3. In the real Apps Script editor, verify that `SPREADSHEET_ID` is the real spreadsheet and `OWNER_EMAIL` is correct. Confirm the production Script ID differs from DEV. Keep IDs and email addresses out of Git.
+4. Record the currently active email/import settings. Temporarily disable the scheduled trigger while replacing the code. Set the real project's Script Properties to this **safe pre-upload state**:
 
-  ```text
-  SPREADSHEET_ID=<REAL sheet ID>
-  OWNER_EMAIL=<your real email address>
-  EMAIL_MODE=DRY_RUN
-  ALLOW_PRODUCTION_EMAILS=false
-  ENABLE_PAYMENT_IMPORT=false
-  ```
+   ```text
+   EMAIL_MODE=DRY_RUN
+   ALLOW_PRODUCTION_EMAILS=false
+   ENABLE_PAYMENT_IMPORT=false
+   ```
 
-  This is a pre-upload safety state. **Uploading code does not update these
-  Script Properties**. Existing triggers can run new code immediately.
+   This prevents the ordinary scheduled payment cycle from sending emails or importing payments during the update. The upload command **does not** set these properties for you.
 
-- Check that historical payments in real `Emails` data, `SUMIF` totals in
-  Tracker row 6, rate history, and recipient addresses are correct.
-  Reconcile unread labeled Gmail notifications to avoid importing legacy
-  payments a second time.
-
-Then from the **same checkout**:
+From the same repository checkout:
 
 ```powershell
 git checkout main
@@ -101,60 +50,43 @@ npm.cmd run deploy:prod:status
 npm.cmd run deploy:prod
 ```
 
-The production command:
+The production uploader checks the saved production target, runs the Node tests, stages only `src/` in a temporary folder, displays `clasp status`, and requires a typed confirmation before pushing. It does not modify the DEV clasp configuration.
 
-1. Verifies that production and DEV Script IDs differ.
-2. Runs the complete Node test suite.
-3. Copies **only the `src/` directory** into a temporary folder and writes a
-   temporary production `.clasp.json` there.
-4. Shows `clasp status` for the production target.
-5. Requires a typed `DEPLOY PRODUCTION <last 6 characters>` confirmation.
-6. Runs `clasp push` against **only** the production Script ID.
-7. Deletes the temporary folder; your original DEV link is unchanged.
+### After the upload
 
-This **uploads code only**. It does **not** authorize production email
-delivery, modify the real spreadsheet, turn on Gmail imports, or configure
-scheduled triggers. Those depend on the existing Script Properties and triggers
-in the actual Google Apps Script project.
+1. While still in `DRY_RUN`, use `testUpdateParticipants()` to inspect recalculated balances and `previewPaymentReminders()` to inspect which reminders would be selected. Both are read-only.
+2. Check the actual Tracker totals, historical price schedule, paid-through dates, prepaid credit, payment records and recipient addresses. **Do not send reminders if anything looks incorrect.**
+3. If email wording or recipients changed, set `EMAIL_MODE=TEST` with `ALLOW_PRODUCTION_EMAILS=false` and `ENABLE_PAYMENT_IMPORT=false`, then run `checkCellFillColor()` manually. TEST emails go only to `OWNER_EMAIL`. Switch back to `DRY_RUN` afterwards.
+4. When satisfied, restore the intended **live** Script Properties. For normal authorized production sending, `EMAIL_MODE=PRODUCTION` and `ALLOW_PRODUCTION_EMAILS=true` are required. Set `ENABLE_PAYMENT_IMPORT=true` only if Gmail ingestion is intended and the labeled notifications have been reviewed.
+5. Re-enable the existing time-driven trigger (normally one trigger for `checkCellFillColor()`) if you paused it. Review the Apps Script Executions log and check for unexpected messages or sheet updates.
 
-## After uploading to the real script
+**Important:** Returning to `PRODUCTION` may send reminders to members on the next scheduled run. Existing deduplication markers prevent repeats for recorded sends, but cannot reconstruct emails sent by older versions of the script.
 
-1. Keep `EMAIL_MODE=DRY_RUN`. Run `testUpdateParticipants()` and compare
-   every calculated date and credit with actual historical records; then run
-   `previewPaymentReminders()` to inspect who would receive reminders.
-2. **If merged and available:** `importPaymentsForReview()` allows a separate
-   import-only reconciliation under `DRY_RUN` with
-   `ENABLE_PAYMENT_IMPORT=true`. It writes the Emails sheet and marks
-   imported messages read; first check for duplicate legacy emails.
-3. If amounts are correct, `updateTrackerValues()` in DRY_RUN explicitly
-   writes rows 7 and 8. **A member with $0 total paid is reset to the day before
-   their join date**, even if row 7 previously held a later date.
-4. Set `EMAIL_MODE=TEST` (with `ALLOW_PRODUCTION_EMAILS=false`) to review
-   emails sent **to OWNER_EMAIL only** via `checkCellFillColor()`.
-5. Only when the real balances, recipients and messages are confirmed,
-   explicitly enable `EMAIL_MODE=PRODUCTION`,
-   `ALLOW_PRODUCTION_EMAILS=true`, and
-   `ENABLE_PAYMENT_IMPORT=true`. The first run of
-   `checkCellFillColor()` can send live reminders immediately. Install **one**
-   time-driven trigger after the manual run is reviewed.
+## Email modes and manual operations
 
-The new uploader **does not make the production business logic safe by itself**.
-The Gmail parser expects a particular bank notification subject format, older
-payment records can lack message-ID deduplication, and month-end overdue counts
-need checking for join dates around the 29th–31st.
+| Mode or function | Behavior |
+| --- | --- |
+| `EMAIL_MODE=DRY_RUN` | The scheduled `checkCellFillColor()` cycle previews without sending, importing Gmail messages, or writing Tracker values. |
+| `EMAIL_MODE=TEST` | Generated reminders are sent to `OWNER_EMAIL` only; no Gmail import or Tracker updates through the scheduled cycle. |
+| `EMAIL_MODE=PRODUCTION` | Live reminders require `ALLOW_PRODUCTION_EMAILS=true`. Gmail importing additionally requires `ENABLE_PAYMENT_IMPORT=true`. |
+| `importPaymentsForReview()` | **Explicit exception:** can import recognized Gmail messages and mark them read even while in DRY_RUN, but only with `ALLOW_PRODUCTION_EMAILS=false` and `ENABLE_PAYMENT_IMPORT=true`. Does not send reminders or update Tracker rows 7–8. Use only for an intentional, audited reconciliation. |
+| `updateTrackerValues()` | Explicit manual function that **writes** recalculated Tracker rows 7–8 under its DRY_RUN guard. A $0 cumulative payment can reset a participant's saved paid-through date. Not required for a routine code upload. |
 
-## Troubleshooting
+Never use a generic `clasp push` from an unverified working directory. Use `deploy:dev` or `deploy:prod` instead.
 
-- **Production not linked:** run `npm.cmd run deploy:prod:link`.
-- **Clasp not recognized:** install `@google/clasp` globally and reopen the
-  VS Code terminal; on Windows use `clasp.cmd login`.
-- **DEV marker missing:** use `npm.cmd run dev:link` against the real DEV
-  Script ID; never substitute the production ID.
-- **Target confusion:** compare the displayed Script ID with the one in the
-  corresponding Google Apps Script → Project Settings. The CLI cannot
-  independently know which Google project or Sheet is production.
-- **Switching PCs:** copy or recreate the ignored local links *on that PC*;
-  GitHub intentionally never stores them.
+## Switching computers or repairing a local link
 
-Never run `clasp push` directly from an unverified working directory. Use
-`deploy:dev` or `deploy:prod` instead.
+The Apps Script projects already exist. The local connection files are deliberately not stored on GitHub.
+
+- If `clasp` is unavailable on a new computer, install `@google/clasp` and sign in with `clasp.cmd login`.
+- If the existing DEV connection is missing, run `npm.cmd run dev:link` using the existing DEV Script ID.
+- If the existing production connection is missing, run `npm.cmd run deploy:prod:link` using the existing **real production** Script ID. This only saves the local target; it does not upload code.
+- Verify each Script ID in Google Apps Script → Project Settings and run its corresponding `status` command before uploading. Never substitute DEV and production IDs.
+
+The production uploader uses an ignored `.clasp-prod.json` profile, separate from the verified DEV `.clasp.json` and `.clasp-dev.json` files.
+
+## Emergency stop and rollback
+
+If a live update behaves unexpectedly, switch the real Script Properties to `EMAIL_MODE=DRY_RUN`, `ALLOW_PRODUCTION_EMAILS=false` and `ENABLE_PAYMENT_IMPORT=false`, then disable the scheduled trigger. Restore the saved Apps Script source and/or spreadsheet backup as appropriate, verify records and recipients, and only then resume automation.
+
+Known limitations remain relevant during ongoing operation: Gmail importing relies on labeled **subject lines** rather than independent proof of payment, old payment rows without message IDs can cause legacy duplicates, and month-end overdue counts around the 29th–31st require extra checking. Passing local tests does not independently verify the live Gmail account, notifications, spreadsheet or triggers.
