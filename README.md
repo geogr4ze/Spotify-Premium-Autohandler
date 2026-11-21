@@ -184,6 +184,12 @@ Do **not** push this branch directly to your live script without checking its ma
 - `src/*.html`: professional HTML email templates
 - `tests/paymentTracker.test.js`: regression suite for the **actual app code**
 
+## Production deployment
+
+For an **existing real Sheet and real Apps Script project**, use the staged [production cutover checklist](PRODUCTION_CUTOVER.md). The separate `importPaymentsForReview()` function is deliberately callable only with `EMAIL_MODE=DRY_RUN`, `ALLOW_PRODUCTION_EMAILS=false` and `ENABLE_PAYMENT_IMPORT=true`. It **writes payments into the Emails tab and marks imported messages read**, but does **not** update end-date cells or send emails. Back up and reconcile historical payment records before using it.
+
+Do **not** use `npm run dev:push` to upload to the live script, and do not enable live email delivery before verifying calculated real balances and recipients.
+
 ## Deployment caveats
 
 The implementation has been tested locally with mocks, not against your live spreadsheet or Gmail. Rate history, existing Tracker formulas, payment subject lines, and historical read/unread state must be checked with redacted examples before enabling payment import or member emails. This branch does **not** change the live Google Apps Script project automatically; merging a GitHub PR is also not a live deployment unless you explicitly synchronize it with Apps Script.
