@@ -9,7 +9,7 @@ are independent and ignored by Git.
 | DEV test project | `npm.cmd run dev:link` if not linked | `npm.cmd run dev:status` | `npm.cmd run deploy:dev` |
 | Existing real project | `npm.cmd run deploy:prod:link` | `npm.cmd run deploy:prod:status` | `npm.cmd run deploy:prod` |
 
-**There is no default production target.** Production requires a separately
+If you also merge the earlier production preflight PR (#10), use this guide's\n**same-checkout commands** instead of the separate-folder upload method in\nits cutover checklist. Its payment reconciliation and live-email checks still apply.\n\n**There is no default production target.** Production requires a separately
 registered Script ID and an interactive confirmation on every upload. Existing
 `dev:push`, `dev:status`, `dev:link` and `dev:create` commands continue to work.
 
