@@ -2,6 +2,27 @@
 
 Google Apps Script payment tracker with **safe local tests** and a controlled email release process. The project reads the five paying participants in the **Tracker** sheet, calculates paid-through dates from cumulative contributions, processes recognized Gmail payment notices, and generates polite payment reminders.
 
+## Upload code to DEV or production
+
+**One VS Code checkout; two separately configured targets.** See
+[DEPLOYMENT.md](DEPLOYMENT.md) for setup, backups, production precautions and
+the first live-email release checklist.
+
+| Target | Upload command |
+| --- | --- |
+| DEV Apps Script | `npm.cmd run deploy:dev` |
+| Real production Apps Script | `npm.cmd run deploy:prod` |
+
+Configure the real target once using `npm.cmd run deploy:prod:link` and
+check it with `npm.cmd run deploy:prod:status`. The production uploader
+runs tests, uses a disposable clasp directory so it never touches the DEV
+`.clasp.json`, and requires explicit typed confirmation before uploading.
+
+**An upload does not automatically make emails safe to send.** Set the
+*actual production project's* Script Properties to DRY_RUN before upload,
+back up its original code and real sheet, and review existing triggers.
+Clasp uploads the script source only, without creating a web deployment.
+
 ## Safety first
 
 - `EMAIL_MODE` defaults to `DRY_RUN`: **no emails, Gmail imports, spreadsheet writes, or marking messages read** when running the scheduled `checkCellFillColor()` entry point.
