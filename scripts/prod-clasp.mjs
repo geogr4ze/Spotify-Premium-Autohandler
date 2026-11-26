@@ -18,10 +18,21 @@ const devProjectPath = path.join(root, '.clasp.json');
 const devMarkerPath = path.join(root, '.clasp-dev.json');
 const createdBy = 'spotify-production-clasp-setup-v1';
 
+/**
+ * Read and parse a local JSON file.
+ * @param {string} file - File path.
+ * @returns {*} Parsed value.
+ * @throws {Error} File or parse failure.
+ */
 function readJson(file) {
   return JSON.parse(readFileSync(file, 'utf8'));
 }
 
+/**
+ * Read paired local DEV configuration, or report both absent.
+ * @returns {Object} Project and marker, both null if absent.
+ * @throws {Error} Incomplete pair or read failure.
+ */
 function localDevelopment() {
   const hasProject = existsSync(devProjectPath);
   const hasMarker = existsSync(devMarkerPath);
@@ -36,6 +47,16 @@ function localDevelopment() {
 }
 
 /** Validate the saved production target, including separation from DEV. */
+/**
+ * Validate production profile and reject matching DEV ID.
+ * @param {Object} profile - Production profile.
+ * @param {Object
+ * null} [devProject] - DEV configuration.
+ * @param {Object
+ * null} [devMarker] - DEV marker.
+ * @returns {string} Verified production ID.
+ * @throws {Error} Invalid profile, incomplete DEV configuration or identical target.
+ */
 export function verifyProductionTarget(profile, devProject = null, devMarker = null) {
   if (!profile || profile.role !== 'production' ||
       profile.createdBy !== createdBy ||
@@ -56,6 +77,18 @@ export function verifyProductionTarget(profile, devProject = null, devMarker = n
 }
 
 /** Only called for an explicit first-time production link. */
+/**
+ * Build a new production profile without overwriting an existing one.
+ * @param {string} scriptId - User-verified production ID.
+ * @param {Object
+ * null} [existingProfile] - Existing profile.
+ * @param {Object
+ * null} [devProject] - DEV configuration.
+ * @param {Object
+ * null} [devMarker] - DEV marker.
+ * @returns {Object} Validated profile; no writes.
+ * @throws {Error} Existing profile or invalid target.
+ */
 export function prepareProductionLink(scriptId, existingProfile = null,
                                       devProject = null, devMarker = null) {
   if (existingProfile) {
@@ -73,6 +106,15 @@ export function prepareProductionLink(scriptId, existingProfile = null,
 /**
  * Make a throwaway standalone clasp directory, containing only src/ and the
  * production Script ID. The DEV .clasp.json and DEV marker stay untouched.
+ */
+/**
+ * Copy src into an isolated temporary clasp directory.
+ * @param {Object} profile - Valid production profile.
+ * @param {string} sourceDir - Source directory.
+ * @param {string} [tempRoot] - Parent temp directory.
+ * @returns {string} Staging path; caller cleans it.
+ * @effects Writes staged source and target configuration; DEV link unchanged.
+ * @throws {Error} Missing manifest, invalid target or IO failure; removes failed stage.
  */
 export function stageProductionSource(profile, sourceDir, tempRoot = tmpdir()) {
   verifyProductionTarget(profile);
@@ -93,6 +135,14 @@ export function stageProductionSource(profile, sourceDir, tempRoot = tmpdir()) {
   }
 }
 
+/**
+ * Run a subprocess synchronously with inherited terminal IO.
+ * @param {string} program - Executable.
+ * @param {string[]} args - Arguments.
+ * @param {string} [cwd] - Working directory.
+ * @effects Launches child process; Windows clasp uses a validated shell command.
+ * @throws {Error} Launch failure or nonzero exit.
+ */
 function run(program, args, cwd = root) {
   const options = {cwd, stdio: 'inherit'};
   const result = process.platform === 'win32' && program === 'clasp'
@@ -104,6 +154,11 @@ function run(program, args, cwd = root) {
   }
 }
 
+/**
+ * Read saved production profile and verify separation from DEV.
+ * @returns {Object} Verified profile.
+ * @throws {Error} Missing or invalid profile.
+ */
 function productionTarget() {
   if (!existsSync(productionPath)) {
     throw new Error('Production not linked. Run npm run deploy:prod:link first.');
@@ -114,6 +169,12 @@ function productionTarget() {
   return profile;
 }
 
+/**
+ * Interactively confirm and save a new production target.
+ * @returns {Promise<void>} Completion of link.
+ * @effects Writes private local profile after confirmation; does not upload.
+ * @throws {Error} Existing link, invalid target or cancelled confirmation.
+ */
 async function linkProduction() {
   if (existsSync(productionPath)) {
     throw new Error('Production already linked; refusing to replace it.');
@@ -140,6 +201,12 @@ async function linkProduction() {
   }
 }
 
+/**
+ * Run an action against a disposable production stage.
+ * @param {Function} action - Callback receiving stage and profile.
+ * @returns {Promise<void>} Completion after callback and cleanup.
+ * @effects Creates then removes staged files; callback may perform external actions.
+ */
 async function withProductionStage(action) {
   const profile = productionTarget();
   const stage = stageProductionSource(profile, path.join(root, 'src'));
@@ -150,6 +217,13 @@ async function withProductionStage(action) {
   }
 }
 
+/**
+ * Test, inspect, confirm and upload staged production source.
+ * @requires Interactive terminal and verified production profile.
+ * @returns {Promise<void>} Completion of upload.
+ * @effects May replace live source; does not change properties or triggers.
+ * @throws {Error} Invalid target, cancellation or command failure.
+ */
 async function pushProduction() {
   const profile = productionTarget();
   if (!process.stdin.isTTY) {
@@ -180,6 +254,12 @@ async function pushProduction() {
   });
 }
 
+/**
+ * Dispatch the selected production CLI action.
+ * @returns {Promise<void>} Completion of operation.
+ * @effects May link, query or upload after confirmation.
+ * @throws {Error} Unknown action or operation failure.
+ */
 async function main() {
   const action = process.argv[2];
   if (action === 'link') await linkProduction();

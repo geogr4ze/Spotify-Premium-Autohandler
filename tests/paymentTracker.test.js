@@ -4,16 +4,49 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
+/**
+ * Build a noon UTC test date.
+ * @param {string} key - Date key.
+ * @returns {Date} Fixture instant.
+ */
 function day(key) { return new Date(key + 'T12:00:00Z'); }
 
 class FakeSheet {
+  /**
+   * Initialize empty fake sheet rows and write count.
+   */
   constructor() { this.rows = []; this.writes = 0; }
+  /**
+   * Store a cell value in the fake sheet.
+   * @param {number} row - One-based row.
+   * @param {number} column - One-based column.
+   * @param {*} value - Cell value.
+   * @effects Mutates fake storage without incrementing write count.
+   */
   put(row, column, value) {
     if (!this.rows[row - 1]) this.rows[row - 1] = [];
     this.rows[row - 1][column - 1] = value;
   }
+  /**
+   * Read a fake cell.
+   * @param {number} row - One-based row.
+   * @param {number} column - One-based column.
+   * @returns {*} Stored value or empty string.
+   */
   get(row, column) { return this.rows[row - 1]?.[column - 1] ?? ''; }
+  /**
+   * Return the number of stored row slots.
+   * @returns {number} Row count.
+   */
   getLastRow() { return this.rows.length; }
+  /**
+   * Create fake range methods bound to the sheet.
+   * @param {number} row - Starting row.
+   * @param {number} column - Starting column.
+   * @param {number} [numRows] - Height.
+   * @param {number} [numCols] - Width.
+   * @returns {Object} Range mock.
+   */
   getRange(row, column, numRows = 1, numCols = 1) {
     const sheet = this;
     return {
@@ -29,12 +62,22 @@ class FakeSheet {
       }
     };
   }
+  /**
+   * Insert empty rows and increment write count.
+   * @param {number} start - One-based row.
+   * @param {number} count - Rows to insert.
+   */
   insertRows(start, count) {
     for (let i = 0; i < count; i++) this.rows.splice(start - 1, 0, []);
     this.writes++;
   }
 }
 
+/**
+ * Build an isolated fake Apps Script environment.
+ * @param {Object} [options] - Settings, messages and behavior overrides.
+ * @returns {Object} Test harness.
+ */
 function setup(options = {}) {
   const tracker = new FakeSheet();
   const emails = new FakeSheet();
@@ -60,12 +103,37 @@ function setup(options = {}) {
   const sent = [];
   const previews = [];
   const messages = options.messages || [];
+  /**
+   * Create a mock Gmail message with mutable unread state.
+   * @param {Object} details - Fixture fields.
+   * @returns {Object} Fake message.
+   */
   const fakeMessage = (details) => ({
     ...details,
+    /**
+     * Return current fixture unread flag.
+     * @returns {boolean} Unread state.
+     */
     isUnread() { return this.unread; },
+    /**
+     * Return fixture message identifier.
+     * @returns {string} ID.
+     */
     getId() { return this.id; },
+    /**
+     * Return fixture subject.
+     * @returns {string} Subject.
+     */
     getSubject() { return this.subject; },
+    /**
+     * Return fixture timestamp.
+     * @returns {Date} Date.
+     */
     getDate() { return this.date; },
+    /**
+     * Mark fake message read.
+     * @effects Sets unread to false.
+     */
     markRead() { this.unread = false; }
   });
   const mailMessages = messages.map(fakeMessage);
@@ -76,21 +144,59 @@ function setup(options = {}) {
       warn: message => previews.push(message)
     },
     Utilities: {
+      /**
+       * Stub yyyy-MM-dd formatting.
+       * @param {Date} value - Instant.
+       * @param {string} tz - Unused timezone.
+       * @param {string} format - Expected format.
+       * @returns {string} UTC date.
+       */
       formatDate(value, tz, format) {
         assert.equal(format, 'yyyy-MM-dd');
         return value.toISOString().slice(0, 10);
       },
+      /**
+       * Parse fixture date key.
+       * @param {string} key - Date key.
+       * @returns {Date} Noon UTC.
+       */
       parseDate(key) { return day(key); }
     },
     SpreadsheetApp: {
+      /**
+       * Open the fake spreadsheet, asserting expected ID.
+       * @param {string} id - Fake ID.
+       * @returns {Object} Mock workbook.
+       */
       openById(id) { assert.equal(id, 'fake-sheet'); return {
+        /**
+         * Look up fake sheet.
+         * @param {string} name - Tab name.
+         * @returns {Object} Fake sheet.
+         */
         getSheetByName(name) { return sheets[name]; },
+        /**
+         * Return test time zone.
+         * @returns {string} UTC.
+         */
         getSpreadsheetTimeZone() { return 'UTC'; }
       }; },
+      /**
+       * No-op mock for spreadsheet flush.
+       */
       flush() {}
     },
     HtmlService: {
+      /**
+       * Build a mock HTML template.
+       * @param {string} name - Template fixture.
+       * @returns {Object} Mock template.
+       */
       createTemplateFromFile(name) { return {
+        /**
+         * Render fixture HTML content.
+         * @returns {Object} Fake rendered content accessor.
+         */
         evaluate() { return { getContent: () => '<html>' + name + ':' + this.name + ':' + this.amountDue + '</html>' }; }
       }; }
     },

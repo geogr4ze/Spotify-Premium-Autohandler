@@ -13,6 +13,14 @@ const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const projectPath = path.join(root, '.clasp.json');
 const markerPath = path.join(root, '.clasp-dev.json');
 
+/**
+ * Check the local DEV marker, matching Script ID and exact src root.
+ * @param {Object} project - clasp configuration.
+ * @param {Object} marker - DEV marker.
+ * @param {string} [projectRoot] - Root directory.
+ * @returns {string} Verified ID.
+ * @throws {Error} Invalid or mismatched link; remote role cannot be independently verified.
+ */
 export function verifyDevelopmentTarget(project, marker, projectRoot = root) {
   if (!project || typeof project.scriptId !== 'string' || !project.scriptId.trim()) {
     throw new Error('Missing Apps Script ID in .clasp.json.');
@@ -33,6 +41,12 @@ export function verifyDevelopmentTarget(project, marker, projectRoot = root) {
   return project.scriptId;
 }
 
+/**
+ * Read and parse a local JSON file.
+ * @param {string} file - File path.
+ * @returns {*} Parsed value.
+ * @throws {Error} File or parse failure.
+ */
 function readJson(file) {
   return JSON.parse(readFileSync(file, 'utf8'));
 }
@@ -41,6 +55,13 @@ function readJson(file) {
  * Windows .cmd shims need a shell. Quoting each known, fixed CLI argument
  * preserves titles containing spaces and avoids spawn's deprecated combination
  * of shell:true with a separate arguments array.
+ */
+/**
+ * Build a Windows clasp shell command from safe arguments.
+ * @param {string} program - Executable.
+ * @param {string[]} args - CLI arguments.
+ * @returns {string} Command with whitespace arguments quoted.
+ * @throws {Error} Empty or unsafe arguments.
  */
 export function buildWindowsCommand(program, args) {
   return [program, ...args].map((arg) => {
@@ -54,6 +75,14 @@ export function buildWindowsCommand(program, args) {
   }).join(' ');
 }
 
+/**
+ * Run a subprocess synchronously with inherited terminal IO.
+ * @param {string} program - Executable.
+ * @param {string[]} args - Arguments.
+ * @param {string} [cwd] - Working directory.
+ * @effects Launches child process; Windows clasp uses a validated shell command.
+ * @throws {Error} Launch failure or nonzero exit.
+ */
 function run(program, args, cwd = root) {
   const options = {cwd, stdio: 'inherit'};
   // Node itself is an executable and does not need a shell on Windows.
@@ -66,12 +95,21 @@ function run(program, args, cwd = root) {
   }
 }
 
+/**
+ * Check that src/appsscript.json exists.
+ * @throws {Error} Missing manifest.
+ */
 function requireManifest() {
   if (!existsSync(path.join(root, 'src', 'appsscript.json'))) {
     throw new Error('Missing src/appsscript.json.');
   }
 }
 
+/**
+ * Create a standalone DEV script in a temporary directory and register the local link.
+ * @effects Creates remote script and local configuration; cleans temporary files.
+ * @throws {Error} Existing link, missing manifest or command/file failure.
+ */
 function createDev() {
   requireManifest();
   if (existsSync(projectPath) || existsSync(markerPath)) {
@@ -112,6 +150,17 @@ function createDev() {
  * We cannot determine from the ID alone whether a project is production.
  * Existing links are never silently replaced.
  */
+/**
+ * Validate proposed local link for a user-verified DEV project.
+ * @param {string} scriptId - Supplied ID.
+ * @param {Object
+ * null} [existingProject] - Existing clasp link.
+ * @param {Object
+ * null} [existingMarker] - Existing marker.
+ * @param {string} [projectRoot] - Root directory.
+ * @returns {Object} Project, marker and reuse flag; no writes.
+ * @throws {Error} Invalid ID or conflicting configuration.
+ */
 export function prepareExistingDevLink(scriptId, existingProject = null, existingMarker = null,
                                        projectRoot = root) {
   const id = typeof scriptId === 'string' ? scriptId.trim() : '';
@@ -135,6 +184,12 @@ export function prepareExistingDevLink(scriptId, existingProject = null, existin
   return {project, marker, reusedExistingProject: Boolean(existingProject)};
 }
 
+/**
+ * Interactively register an existing DEV target.
+ * @returns {Promise<void>} Completion of link.
+ * @effects Prompts and writes private local files; rolls back newly created project file if marker write fails.
+ * @throws {Error} Conflict, cancellation or IO error.
+ */
 async function linkDev() {
   requireManifest();
   if (existsSync(markerPath)) {
@@ -176,6 +231,11 @@ async function linkDev() {
   }
 }
 
+/**
+ * Load and validate both DEV link files and manifest.
+ * @returns {string} Verified target ID.
+ * @throws {Error} Missing or inconsistent configuration.
+ */
 function requireDev() {
   if (!existsSync(projectPath) || !existsSync(markerPath)) {
     throw new Error('Development clasp setup missing. First run npm run dev:create.');
@@ -184,6 +244,11 @@ function requireDev() {
   return verifyDevelopmentTarget(readJson(projectPath), readJson(markerPath));
 }
 
+/**
+ * Run local tests and push src to the verified DEV target.
+ * @effects Runs tests and uploads code only after they pass.
+ * @throws {Error} Invalid target or command failure.
+ */
 function pushDev() {
   const scriptId = requireDev();
   console.log('Verified local DEV target: ' + scriptId);
@@ -193,6 +258,12 @@ function pushDev() {
   run('clasp', ['push']);
 }
 
+/**
+ * Dispatch DEV CLI action from process arguments.
+ * @returns {Promise<void>} Completion of selected action.
+ * @effects May create, link, inspect or push.
+ * @throws {Error} Unknown command or operation failure.
+ */
 async function main() {
   const command = process.argv[2];
   if (command === 'create') createDev();
