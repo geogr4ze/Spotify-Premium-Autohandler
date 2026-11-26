@@ -107,12 +107,26 @@ function main() {
   }
 
   const files = git.stdout.toString('utf8').split('\0').filter(Boolean);
+  const staged = process.argv.includes('--staged');
   const failures = [];
   for (const file of files) {
-    const fullPath = path.join(root, file);
     try {
-      if (!statSync(fullPath).isFile()) continue;
-      failures.push(...scanFile(file, readFileSync(fullPath)));
+      let bytes;
+      if (staged) {
+        // A pre-commit hook must inspect the indexed version, not unstaged edits.
+        const blob = spawnSync('git', ['show', ':' + file], {
+          cwd: root, encoding: 'buffer', maxBuffer: 4 * 1024 * 1024
+        });
+        if (blob.error || blob.status !== 0) {
+          throw new Error('staged file unavailable');
+        }
+        bytes = blob.stdout;
+      } else {
+        const fullPath = path.join(root, file);
+        if (!statSync(fullPath).isFile()) continue;
+        bytes = readFileSync(fullPath);
+      }
+      failures.push(...scanFile(file, bytes));
     } catch {
       failures.push({file, line: 0, type: 'tracked file could not be scanned'});
     }
