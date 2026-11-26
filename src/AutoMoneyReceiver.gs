@@ -2,6 +2,12 @@
  * Extract only unambiguous Interac-style notifications from subject lines.
  * Unknown formats remain unread for manual review — never guess a payment.
  */
+/**
+ * Extract a recognized received-payment subject without guessing.
+ * @param {string} subject - Original subject.
+ * @returns {{name:string,amount:number}
+ * null} Name and positive dollar amount or null.
+ */
 function parsePaymentSubject(subject) {
   if (typeof subject !== 'string' || !/\breceived\b/i.test(subject)) return null;
   const nameMatch = /\bfrom\s+(.+?)\s+and\b/i.exec(subject);
@@ -19,6 +25,13 @@ function parsePaymentSubject(subject) {
 }
 
 /** Import Gmail notifications only in explicitly enabled production mode. */
+/**
+ * Import unread labelled payment emails and deduplicate by message ID.
+ * @param {Object} context - Tracker context with emailSheet.
+ * @requires ENABLE_PAYMENT_IMPORT=true for actual import; caller controls mode.
+ * @returns {Object} Imported/skipped counts and optional disabled/missingLabel flags.
+ * @effects Inserts recognized rows and marks messages read after persistence; unknown subjects stay unread.
+ */
 function addData(context) {
   if (getScriptSettings().getProperty('ENABLE_PAYMENT_IMPORT') !== 'true') {
     return { imported: 0, skipped: 0, disabled: true };

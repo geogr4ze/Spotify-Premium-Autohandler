@@ -1,3 +1,12 @@
+/**
+ * Construct a member reminder using coverage and the appropriate HTML template.
+ * @param {Object} person - Participant with email, credit and end date.
+ * @param {Object} outstanding - Debt in cents and billing periods.
+ * @param {number} monthlyRateCents - Current rate.
+ * @param {string} ownerEmail - Payment destination.
+ * @param {string} today - Date key.
+ * @returns {Object} Rendered email payload; does not send.
+ */
 function makeReminderMessage(person, outstanding, monthlyRateCents, ownerEmail, today) {
   const isPartiallyPrepaid = person.creditCents > 0;
   const templateName = isPartiallyPrepaid ? 'OverBalanceEmail' : 'Email';
@@ -27,6 +36,15 @@ function makeReminderMessage(person, outstanding, monthlyRateCents, ownerEmail, 
   };
 }
 
+/**
+ * Construct the owner review email for overdue coverage.
+ * @param {Object} person - Participant.
+ * @param {Object} outstanding - Calculated debt.
+ * @param {number} monthsOverdue - Full overdue months.
+ * @param {string} ownerEmail - Recipient.
+ * @param {string} today - Date key.
+ * @returns {Object} Rendered email payload; no delivery.
+ */
 function makeOwnerAlert(person, outstanding, monthsOverdue, ownerEmail, today) {
   const template = HtmlService.createTemplateFromFile('ManyuEmail');
   template.name = person.name;
@@ -52,6 +70,14 @@ function makeOwnerAlert(person, outstanding, monthsOverdue, ownerEmail, today) {
  * Properties are only written after a successful production send.
  * A single due-date/billing-period notification won't be resent each day.
  */
+/**
+ * Deduplicate production reminders by a persistent key.
+ * @param {Object} message - Complete email payload.
+ * @param {string} dedupeKey - Stable notification key.
+ * @param {Object} config - Email configuration.
+ * @returns {string} Gateway status or ALREADY_SENT.
+ * @effects Sends according to mode and records key only on production success.
+ */
 function deliverOnce(message, dedupeKey, config) {
   const properties = getScriptSettings();
   if (config.mode === 'PRODUCTION' && properties.getProperty(dedupeKey)) {
@@ -65,6 +91,14 @@ function deliverOnce(message, dedupeKey, config) {
 }
 
 /** Main scheduled entry point. Safe by default; never uses background colours. */
+/**
+ * Run the complete payment workflow under a script lock.
+ * @param {Date} [now] - Run instant.
+ * @param {boolean} [forceDryRun] - True forces read-only preview.
+ * @returns {Object} Mode, import result and notification statuses.
+ * @effects Production may import Gmail, update coverage and send reminders; TEST mails only the owner.
+ * @throws {Error} Lock, configuration, data or service failure.
+ */
 function runPaymentCycle(now, forceDryRun) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) throw new Error('Another payment cycle is running.');
@@ -116,6 +150,11 @@ function runPaymentCycle(now, forceDryRun) {
 }
 
 /** Retain the name used by existing Apps Script time-driven triggers. */
+/**
+ * Preserve the scheduled trigger entry point.
+ * @returns {Object} Payment cycle report.
+ * @effects Runs configured workflow; production may send mail and write data.
+ */
 function checkCellFillColor() {
   return runPaymentCycle();
 }

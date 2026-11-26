@@ -1,4 +1,10 @@
 /** Read any dated rates starting at row 16, including rates added in the future. */
+/**
+ * Read and sort dated monthly prices from the rate table.
+ * @param {Object} context - Tracker and timezone.
+ * @returns {Object[]} Rates with startDate and cents in ascending date order.
+ * @throws {Error} Empty, invalid, nonpositive or duplicate rates.
+ */
 function readRateSchedule(context) {
   const sheet = context.trackerSheet;
   const firstRow = TRACKER_LAYOUT.rateStartRow;
@@ -27,6 +33,11 @@ function readRateSchedule(context) {
 }
 
 /** Convert the next billing date into the sheet's inclusive end month. */
+/**
+ * Convert an exclusive billing boundary into the preceding calendar day.
+ * @param {string} key - Valid yyyy-MM-dd.
+ * @returns {string} Previous date key.
+ */
 function previousCalendarDay(key) {
   const parts = key.split('-').map(Number);
   return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] - 1))
@@ -36,6 +47,14 @@ function previousCalendarDay(key) {
 /**
  * Calculate each participant from their join date and total contributions.
  * Only explicit, approved write paths should pass writeChanges=true.
+ */
+/**
+ * Calculate coverage for every participant before optionally writing results.
+ * @param {Object} context - Tracker context.
+ * @param {boolean} writeChanges - Only true allows writes.
+ * @returns {Object} Participant results and rates.
+ * @effects When true, writes coverage and credit and flushes Sheets.
+ * @throws {Error} Invalid participant or payment data.
  */
 function updateParticipants(context, writeChanges) {
   const records = readParticipantRecords(context);

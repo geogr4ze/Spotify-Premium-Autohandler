@@ -12,11 +12,20 @@ const TRACKER_LAYOUT = Object.freeze({
   paymentLabel: 'Spotify Premium Money'
 });
 
+/**
+ * Access private script properties.
+ * @returns {GoogleAppsScript.Properties.Properties} Property store; does not modify it.
+ */
 function getScriptSettings() {
   return PropertiesService.getScriptProperties();
 }
 
 /** Load the configured spreadsheet only when a function is actually run. */
+/**
+ * Open configured spreadsheet and locate required tabs.
+ * @returns {Object} Spreadsheet, Tracker, Emails and timezone.
+ * @throws {Error} Missing ID/tab or access failure.
+ */
 function getTrackerContext() {
   const spreadsheetId = getScriptSettings().getProperty('SPREADSHEET_ID');
   if (!spreadsheetId) {
@@ -38,6 +47,11 @@ function getTrackerContext() {
 }
 
 /** No personal addresses or spreadsheet IDs are committed to GitHub. */
+/**
+ * Read the private owner address.
+ * @returns {string} Trimmed address.
+ * @throws {Error} Missing or invalid address.
+ */
 function getOwnerEmail() {
   const email = (getScriptSettings().getProperty('OWNER_EMAIL') || '').trim();
   if (!isValidEmailAddress(email)) {
@@ -46,12 +60,23 @@ function getOwnerEmail() {
   return email;
 }
 
+/**
+ * Check basic address syntax, not mailbox existence.
+ * @param {*} address - Candidate.
+ * @returns {boolean} Whether string matches email pattern.
+ */
 function isValidEmailAddress(address) {
   return typeof address === 'string' &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address.trim());
 }
 
 /** Read the five participant records fresh each time; never cache sheet values. */
+/**
+ * Read current participant columns, omitting wholly empty ones.
+ * @param {Object} context - Tracker context.
+ * @returns {Object[]} Records with column, join date, payments, coverage and email.
+ * @effects Reads only.
+ */
 function readParticipantRecords(context) {
   const width = TRACKER_LAYOUT.lastColumn - TRACKER_LAYOUT.firstColumn + 1;
   const joins = context.trackerSheet.getRange(4, 2, 1, width).getValues()[0];

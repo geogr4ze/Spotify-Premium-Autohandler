@@ -1,4 +1,9 @@
 /** All outgoing emails must go through this fail-closed gateway. */
+/**
+ * Read configured email mode, production authorization and owner address.
+ * @returns {Object} Normalized mode, authorization and ownerEmail.
+ * @throws {Error} Missing/invalid owner address.
+ */
 function getEmailConfiguration() {
   const properties = getScriptSettings();
   return {
@@ -8,6 +13,14 @@ function getEmailConfiguration() {
   };
 }
 
+/**
+ * Route email through the fail-closed gateway.
+ * @param {Object} message - Recipient, subject, body and HTML.
+ * @param {Object} [configuration] - Mode, owner and authorization.
+ * @returns {{status:string}} PREVIEW_ONLY, TEST_SENT or PRODUCTION_SENT.
+ * @effects TEST sends only to owner; PRODUCTION requires authorization.
+ * @throws {Error} Invalid input, mode, authorization or mail failure.
+ */
 function sendEmailSafely(message, configuration) {
   const config = configuration || { mode: 'DRY_RUN' };
   const mode = config.mode || 'DRY_RUN';
