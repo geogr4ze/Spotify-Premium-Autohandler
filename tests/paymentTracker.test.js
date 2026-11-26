@@ -197,7 +197,11 @@ function setup(options = {}) {
          * Render fixture HTML content.
          * @returns {Object} Fake rendered content accessor.
          */
-        evaluate() { return { getContent: () => '<html>' + name + ':' + this.name + ':' + this.amountDue + '</html>' }; }
+        evaluate() {
+          return {
+            getContent: () => '<html>' + name + ':' + this.name + ':' + this.amountDue + '</html>'
+          };
+        }
       }; }
     },
     GmailApp: { getUserLabelByName(name) {
