@@ -1,5 +1,22 @@
 # Spotify Premium Autohandler
 
+## Public repository, private data
+
+This repository contains **code only**. Real participant names, payment
+records, Google Sheet links, email addresses, Gmail data and authentication
+credentials stay outside GitHub in access-restricted Google services and
+Apps Script Script Properties.
+
+Run `npm.cmd run security:scan` and `npm.cmd test` before publishing
+changes. To block risky changes **before committing** on your own PC,
+run `npm.cmd run security:install-hook` once. GitHub Actions also checks PRs
+for private data and potential credentials.
+
+See [SECURITY.md](SECURITY.md) for the full privacy policy and
+[placeholder-only Script Properties](docs/script-properties.example.md)
+for a configuration example. Do **not** use real member data in tests,
+issues, screenshots or demonstrations.
+
 ## What is this project?
 
 Spotify Premium Autohandler is a personal payment-tracking and reminder system for a **six-person Spotify Premium plan** that I share with five other people. I manage the subscription and collect each member's share, so the project helps me keep track of who has paid, how much they have contributed, and when their next payment is due.
