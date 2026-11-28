@@ -12,6 +12,9 @@
     "deploy:dev": "node scripts/dev-clasp.mjs push",
     "deploy:prod:link": "node scripts/prod-clasp.mjs link",
     "deploy:prod:status": "node scripts/prod-clasp.mjs status",
-    "deploy:prod": "node scripts/prod-clasp.mjs push"
+    "deploy:prod": "node scripts/prod-clasp.mjs push",
+    "security:scan": "node scripts/check-public-safety.mjs",
+    "security:scan:staged": "node scripts/check-public-safety.mjs --staged",
+    "security:install-hook": "node scripts/install-security-hook.mjs"
   }
 }

@@ -1,8 +1,48 @@
+# Dependencies and OS/editor artifacts
 node_modules/
-.clasp.json
-.clasprc.json
-.env
 .DS_Store
 *.log
+
+# Local Google clasp credentials and deployment targets
+.clasp.json
+.clasprc.json
 .clasp-dev.json
 .clasp-prod.json
+**/.clasp*.json
+**/.clasprc.json
+
+# Local settings: store actual values only in Google Script Properties
+.env
+.env.*
+!.env.example
+**/service-account*.json
+**/*credentials*.json
+**/oauth-token*.json
+**/*secret*.json
+
+# Financial records, exports, archives, and private screenshots
+*.csv
+*.tsv
+*.xls
+*.xlsx
+*.ods
+*.pdf
+*.sqlite
+*.sqlite3
+*.db
+*.zip
+*.7z
+*.tar
+*.gz
+*.pem
+*.key
+*.p12
+*.pfx
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.bmp
+*.tiff
+*.tif
